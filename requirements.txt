@@ -1,0 +1,7 @@
+transformers==4.57.6
+tokenizers
+numpy
+sentencepiece
+gguf>=0.1.0
+protobuf
+safetensors

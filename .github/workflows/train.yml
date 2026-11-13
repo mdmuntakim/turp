@@ -15,21 +15,62 @@ concurrency:
 jobs:
   train:
     runs-on: ubuntu-latest
+    timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: 20
+          python-version: "3.11"
+          cache: pip
 
-      - name: Train checkpoint
-        run: node train.js --steps 2000 --batch 32 --lr 0.0025
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install --index-url https://download.pytorch.org/whl/cpu torch
+          pip install "transformers==4.57.6" tokenizers numpy sentencepiece "gguf>=0.1.0" protobuf safetensors
+
+      - name: Corpus
+        run: |
+          mkdir -p data
+          if [ ! -f data/tinystories.txt ]; then
+            curl -sL --max-time 600 -o data/tinystories.txt \
+              https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories-valid.txt
+          fi
+          wc -c data/tinystories.txt
+
+      - name: Checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p work
+          gh release download turp-v1 -p turp-ckpt.zip -O work/ckpt.zip 2>/dev/null || true
+          if [ -f work/ckpt.zip ]; then
+            mkdir -p work/model
+            unzip -q -o work/ckpt.zip -d work/model
+            echo "resuming from checkpoint:"
+            ls work/model
+          fi
+
+      - name: Train
+        run: |
+          python train.py \
+            --data data/tinystories.txt \
+            --model work/model \
+            --steps 1200 --batch 8 --seq 128 --milestone 100000
+
+      - name: Convert to GGUF
+        run: |
+          git clone --depth 1 https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp
+          python /tmp/llama.cpp/convert_hf_to_gguf.py work/model \
+            --outfile turp-v1.gguf --outtype f16
+          ls -la turp-v1.gguf
 
       - name: Commit checkpoint
         run: |
           git config user.name "turp-trainer"
           git config user.email "turp-trainer@users.noreply.github.com"
-          git add turp-v1.gguf
+          git add turp-v1.gguf status.json
           if git diff --cached --quiet; then
             echo "no checkpoint change"
           else
@@ -37,20 +78,20 @@ jobs:
             git push
           fi
 
-      - name: Publish GGUF release
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view turp-v1 >/dev/null 2>&1 || gh release create turp-v1 \
-            --title "Turp v1 (GGUF)" \
-            --notes "Turp's own weights, trained from scratch on GitHub Actions CPU. GGUF v3 container with the custom 'turp' word-level architecture."
-          gh release upload turp-v1 turp-v1.gguf --clobber
+            --title "Turp (GGUF)" \
+            --notes "Turp is a GPT-2-architecture transformer trained from scratch on GitHub Actions CPU. The .gguf is produced by llama.cpp's own converter and runs in the browser through wllama."
+          gh release upload turp-v1 turp-v1.gguf work/turp-ckpt.zip --clobber
 
       - name: Milestone snapshot
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          STEPS=$(node -e "const fs=require('fs');const g=require('./gguf.js');console.log(g.parse(fs.readFileSync('turp-v1.gguf')).meta.steps)" 2>/dev/null || echo 0)
+          STEPS=$(python -c "import json;print(json.load(open('status.json'))['steps'])" 2>/dev/null || echo 0)
           echo "steps=$STEPS"
           if [ "$STEPS" -gt 0 ] && [ $((STEPS % 100000)) -eq 0 ]; then
             gh release view "turp-${STEPS}" >/dev/null 2>&1 || \

@@ -1,52 +1,55 @@
-# Turp — a word-level AI trained from scratch on GitHub Actions
+# Turp — a real GGUF generative model, trained from scratch
 
-Turp is its own language model: its own tokenizer, its own weights, its own GGUF file,
-its own UI. Nothing is borrowed from an existing model. It learns on a **GitHub Actions CPU**
-from public-domain English books, one checkpoint at a time.
+Turp is a **GPT-2-architecture transformer** trained from scratch on a GitHub Actions CPU.
+Its weights are exported to **`turp-v1.gguf`** by **llama.cpp's own converter**, and the page
+runs that GGUF **in your browser through wllama** (llama.cpp compiled to WebAssembly).
+
+There is no retrieval layer, no rule table, and no existing model — every token is generated
+by the transformer.
 
 **Live: https://mdmuntakim.github.io/turp/**
-**Model release: https://github.com/mdmuntakim/turp/releases/tag/turp-v1**
+**Model: https://github.com/mdmuntakim/turp/releases/tag/turp-v1**
 
-## What kind of model is it?
+## Architecture
 
 | | |
 |---|---|
-| Type | Word-level neural language model (context → embeddings → ReLU → softmax) |
-| Vocabulary | 4,000 tokens |
-| Context | 16 tokens |
-| Embedding / hidden | 64 / 320 |
-| Parameters | 2,003,675 (~2.0 million) |
-| File | `turp-v1.gguf` — real GGUF v3 container, ~7.6 MB |
-| Trainer | Adam, 2,000 steps per run, batch 32 |
-| Corpus | ~1.5 MB of public-domain English (Alice, Grimm, Andersen, Pride and Prejudice, Sherlock Holmes) + chat patterns |
+| Type | GPT-2 decoder-only transformer |
+| Layers | 4 |
+| Embedding | 136 |
+| Heads | 4 |
+| Feed-forward | 544 |
+| Context | 128 tokens |
+| Vocabulary | 4,096 BPE tokens (byte-level) |
+| Parameters | ~2.03 million |
+| Training data | TinyStories (public-domain-style synthetic stories) + chat patterns |
+| Optimizer | AdamW, 1,200 steps per run |
+| Export | f16 GGUF via `llama.cpp/convert_hf_to_gguf.py` |
+| Browser runtime | wllama (llama.cpp WASM), vendored in `wllama/` |
 
-The browser fetches **`turp-v1.gguf`** and parses it with `gguf.js` — the weights are not
-stored as JSON.
+## How it works
 
-## How the loop works
+1. `.github/workflows/train.yml` runs every 3 hours.
+2. `train.py` loads the previous Hugging Face checkpoint from the `turp-v1` release, trains 1,200 steps, saves a new checkpoint.
+3. llama.cpp converts the checkpoint to `turp-v1.gguf` (f16).
+4. The GGUF and checkpoint are uploaded to the release; the GGUF is committed to `main`.
+5. Pages deploys, and `index.html` loads the GGUF with wllama and generates locally.
 
-1. `.github/workflows/train.yml` runs every 3 hours (and on demand).
-2. `train.js` loads the last `turp-v1.gguf`, trains 2,000 steps on the Actions CPU, writes a new checkpoint.
-3. The checkpoint is committed to `main` (which triggers the Pages deploy) and uploaded to the `turp-v1` release.
-4. `index.html` + `gguf.js` + `model.js` load the GGUF and generate in the visitor's browser.
+Training stops exactly on each **100,000-step** milestone, uploads a snapshot, and the next
+run continues from that checkpoint — not from scratch.
 
 ## Files
 
 | File | Role |
 |---|---|
-| `tokenizer.js` | Word/punctuation tokenizer and detokenizer |
-| `model.js` | Forward pass, Adam training step, sampling |
-| `gguf.js` | GGUF v3 writer/reader (Node + browser) |
-| `train.js` | Incremental trainer |
-| `corpus.txt` | The only training text |
-| `index.html` | Black-and-white chat UI |
+| `train.py` | Tokenizer, GPT-2 training, checkpoint + status |
+| `qa.txt` | Small chat-format corpus mixed into training |
+| `index.html` | Monochrome UI, progress/ETA, wllama generation |
+| `wllama/` | Vendored llama.cpp WASM runtime |
+| `.github/workflows/train.yml` | Scheduled training + GGUF conversion |
 
 ## Honest limits
 
-A 2,003,675-parameter word-level model writes simple English and short continuations. It is
-**not** ChatGPT-level and does not reason. More scheduled runs keep improving it.
-
-On size: GitHub release assets allow up to **2 GB per file**, so uploading a 1.7 GB file is
-possible. Training a 1.7 GB model (≈3.4B parameters at 4-bit) from scratch is not possible on
-an Actions CPU — it would need roughly 70B training tokens and GPU-months. This model is the
-largest size that can actually be trained to say real English on CPU in a scheduled run.
+This is a genuine generative transformer, but a tiny one trained for a short time. Early
+checkpoints produce simple, imperfect English. Quality improves with every 1,200-step run.
+It is not ChatGPT-level and will not reliably answer arbitrary questions.

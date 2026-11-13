@@ -199,6 +199,7 @@ export class GPT2 {
     const topP = opts.topP ?? 0.9;
     const stop = opts.stop ?? ["\nUser:"];
     const onToken = opts.onToken;
+    const penalty = opts.repetitionPenalty ?? 1.25;
 
     this.reset();
     const ids = this.tokenizer.encode(prompt);
@@ -210,12 +211,19 @@ export class GPT2 {
       logits = this.forward(id, pos);
       pos++;
     }
+    const history = ids.slice();
     const out = [];
     for (let t = 0; t < maxTokens; t++) {
       if (pos >= this.ctx) break;
+      const recent = new Set(history.slice(-64));
+      for (const rid of recent) {
+        const v = logits[rid];
+        logits[rid] = v > 0 ? v / penalty : v * penalty;
+      }
       const id = this.sample(logits, temperature, topK, topP);
       if (id === 0) break;
       out.push(id);
+      history.push(id);
       const text = this.tokenizer.decode(out);
       if (onToken) onToken(text);
       if (stop.some((s) => text.endsWith(s))) break;

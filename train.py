@@ -45,8 +45,10 @@ def load_tokenizer(model_dir):
     )
 
 
-def make_ids(tok, data_path, project_dir, repeat_qa=30, repeat_chat=500, repeat_code=300):
+def make_ids(tok, data_path, project_dir, repeat_qa=30, repeat_chat=500, repeat_code=300, story_chars=0):
     story_text = Path(data_path).read_text(encoding="utf-8", errors="ignore")
+    if story_chars > 0:
+        story_text = story_text[:story_chars]
     chunks = [c.strip() for c in story_text.split(EOS) if c.strip()]
     ids = []
     eos_id = tok.token_to_id(EOS)
@@ -78,6 +80,10 @@ def main():
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--milestone", type=int, default=100000)
     ap.add_argument("--vocab", type=int, default=4096)
+    ap.add_argument("--repeat-chat", type=int, default=500)
+    ap.add_argument("--repeat-code", type=int, default=300)
+    ap.add_argument("--repeat-qa", type=int, default=30)
+    ap.add_argument("--story-chars", type=int, default=0)
     ap.add_argument("--ckpt-zip", default="work/turp-ckpt.zip")
     ap.add_argument("--status", default="status.json")
     args = ap.parse_args()
@@ -134,7 +140,9 @@ def main():
         log(f"milestone cap: {steps_to_run} steps to reach {steps_done + steps_to_run}")
 
     log("encoding corpus")
-    ids = make_ids(tok, args.data, str(Path(__file__).resolve().parent))
+    ids = make_ids(tok, args.data, str(Path(__file__).resolve().parent),
+                   repeat_qa=args.repeat_qa, repeat_chat=args.repeat_chat,
+                   repeat_code=args.repeat_code, story_chars=args.story_chars)
     if len(ids) < args.seq + 2:
         raise SystemExit("corpus too small")
     log(f"corpus tokens: {len(ids):,}")

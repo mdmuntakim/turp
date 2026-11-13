@@ -4,6 +4,19 @@ on:
   schedule:
     - cron: "0 */3 * * *"
   workflow_dispatch:
+    inputs:
+      steps:
+        description: "Training steps for this run"
+        default: "100000"
+      repeat_chat:
+        description: "How many times to repeat chat.txt"
+        default: "500"
+      repeat_code:
+        description: "How many times to repeat code.txt"
+        default: "300"
+      story_chars:
+        description: "Limit story corpus size (0 = full)"
+        default: "0"
 
 permissions:
   contents: write
@@ -55,6 +68,10 @@ jobs:
       - name: Train
         env:
           GH_TOKEN: ${{ github.token }}
+          STEPS: ${{ inputs.steps || '100000' }}
+          REPEAT_CHAT: ${{ inputs.repeat_chat || '500' }}
+          REPEAT_CODE: ${{ inputs.repeat_code || '300' }}
+          STORY_CHARS: ${{ inputs.story_chars || '0' }}
         run: |
           gh release view turp-v1 >/dev/null 2>&1 || gh release create turp-v1 \
             --title "Turp (GGUF)" \
@@ -72,7 +89,9 @@ jobs:
           python train.py \
             --data data/tinystories.txt \
             --model work/model \
-            --steps 100000 --batch 8 --seq 128 --milestone 100000
+            --steps "$STEPS" --batch 8 --seq 128 --milestone 100000 \
+            --repeat-chat "$REPEAT_CHAT" --repeat-code "$REPEAT_CODE" \
+            --story-chars "$STORY_CHARS"
           STATUS=$?
           kill $UPLOADER 2>/dev/null || true
           exit $STATUS

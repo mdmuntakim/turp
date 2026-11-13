@@ -1,6 +1,6 @@
-/* Turp — tiny char-level neural language model (no dependencies).
- * Shared between Node (training) and the browser (inference).
- * Architecture: context chars -> embeddings -> ReLU hidden -> softmax over chars.
+/* Turp word-level neural language model (shared by Node trainer + browser inference).
+ * Architecture: context of C tokens -> embeddings -> ReLU hidden layer -> softmax.
+ * Trained with Adam. Weights can be loaded from / exported to GGUF.
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
@@ -8,212 +8,221 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  var CONFIG = { context: 12, embed: 32, hidden: 192, seed: 1337 };
-
-  function rng(seed) {
-    var a = seed >>> 0;
-    return function () {
-      a |= 0; a = (a + 0x6D2B79F5) | 0;
-      var t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  }
-  function randn(r) {
-    var u = Math.max(r(), 1e-9), v = r();
-    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  function paramCount(c) {
+    return c.V * c.E + c.C * c.E * c.H + c.H + c.H * c.V + c.V;
   }
 
-  function createModel(chars) {
-    var V = chars.length, C = CONFIG.context, E = CONFIG.embed, H = CONFIG.hidden;
-    var r = rng(CONFIG.seed);
+  function create(config) {
+    var V = config.V, C = config.C, E = config.E, H = config.H;
+    var CH = C * E;
     var Ew = new Float32Array(V * E);
-    for (var i = 0; i < Ew.length; i++) Ew[i] = randn(r) * 0.1;
-    var Wh = new Float32Array(C * E * H);
-    for (var j = 0; j < Wh.length; j++) Wh[j] = randn(r) * 0.1;
+    var Wh = new Float32Array(CH * H);
     var bh = new Float32Array(H);
     var Wo = new Float32Array(H * V);
-    for (var k = 0; k < Wo.length; k++) Wo[k] = randn(r) * 0.02;
     var bo = new Float32Array(V);
-    var params = V * E + C * E * H + H + H * V + V;
+    var i;
+    for (i = 0; i < Ew.length; i++) Ew[i] = (Math.random() * 2 - 1) * 0.1;
+    var a = Math.sqrt(6 / (CH + H));
+    for (i = 0; i < Wh.length; i++) Wh[i] = (Math.random() * 2 - 1) * a;
+    var b = Math.sqrt(6 / (H + V));
+    for (i = 0; i < Wo.length; i++) Wo[i] = (Math.random() * 2 - 1) * b;
+    return { config: { V: V, C: C, E: E, H: H }, weights: { Ew: Ew, Wh: Wh, bh: bh, Wo: Wo, bo: bo }, adam: null };
+  }
+
+  function fromWeights(config, weights) {
     return {
-      config: { V: V, C: C, E: E, H: H },
-      chars: chars.slice(),
-      weights: { Ew: Ew, Wh: Wh, bh: bh, Wo: Wo, bo: bo },
-      meta: { params: params, steps: 0, loss: Math.log(V), updated: new Date().toISOString() }
+      config: { V: config.V, C: config.C, E: config.E, H: config.H },
+      weights: {
+        Ew: weights.Ew instanceof Float32Array ? weights.Ew : Float32Array.from(weights.Ew),
+        Wh: weights.Wh instanceof Float32Array ? weights.Wh : Float32Array.from(weights.Wh),
+        bh: weights.bh instanceof Float32Array ? weights.bh : Float32Array.from(weights.bh),
+        Wo: weights.Wo instanceof Float32Array ? weights.Wo : Float32Array.from(weights.Wo),
+        bo: weights.bo instanceof Float32Array ? weights.bo : Float32Array.from(weights.bo)
+      },
+      adam: null
     };
   }
 
-  function toJSON(m) {
-    return JSON.stringify({
-      config: m.config,
-      chars: m.chars,
-      weights: {
-        Ew: Array.prototype.slice.call(m.weights.Ew),
-        Wh: Array.prototype.slice.call(m.weights.Wh),
-        bh: Array.prototype.slice.call(m.weights.bh),
-        Wo: Array.prototype.slice.call(m.weights.Wo),
-        bo: Array.prototype.slice.call(m.weights.bo)
-      },
-      meta: m.meta
-    });
+  function initAdam(m) {
+    var W = m.weights;
+    var st = { t: 0, m: {}, v: {} };
+    for (var k in W) {
+      st.m[k] = new Float32Array(W[k].length);
+      st.v[k] = new Float32Array(W[k].length);
+    }
+    m.adam = st;
   }
 
-  function fromJSON(src) {
-    var o = typeof src === "string" ? JSON.parse(src) : src;
-    return {
-      config: o.config,
-      chars: o.chars,
-      weights: {
-        Ew: Float32Array.from(o.weights.Ew),
-        Wh: Float32Array.from(o.weights.Wh),
-        bh: Float32Array.from(o.weights.bh),
-        Wo: Float32Array.from(o.weights.Wo),
-        bo: Float32Array.from(o.weights.bo)
-      },
-      meta: o.meta
-    };
+  function forward(m, ids) {
+    var c = m.config, C = c.C, E = c.E, H = c.H, V = c.V, CH = C * E;
+    var W = m.weights;
+    var x = new Float32Array(CH);
+    for (var ci = 0; ci < C; ci++) {
+      var id = ids[ci] < 0 ? 0 : ids[ci];
+      var off = id * E;
+      for (var e = 0; e < E; e++) x[ci * E + e] = W.Ew[off + e];
+    }
+    var h = new Float32Array(H);
+    for (var j = 0; j < H; j++) {
+      var s = W.bh[j];
+      for (var k = 0; k < CH; k++) s += x[k] * W.Wh[k * H + j];
+      h[j] = s > 0 ? s : 0;
+    }
+    var logits = new Float32Array(V);
+    for (var v = 0; v < V; v++) {
+      var t = W.bo[v];
+      for (var jj = 0; jj < H; jj++) t += h[jj] * W.Wo[jj * V + v];
+      logits[v] = t;
+    }
+    return { x: x, h: h, logits: logits };
   }
 
-  function indexMap(chars) {
-    var m = Object.create(null);
-    for (var i = 0; i < chars.length; i++) m[chars[i]] = i;
-    return m;
+  function softmax(logits) {
+    var V = logits.length, max = -Infinity, i;
+    for (i = 0; i < V; i++) if (logits[i] > max) max = logits[i];
+    var probs = new Float32Array(V), sum = 0;
+    for (i = 0; i < V; i++) { var e = Math.exp(logits[i] - max); probs[i] = e; sum += e; }
+    for (i = 0; i < V; i++) probs[i] /= sum;
+    return probs;
   }
 
-  /* One SGD step over a random batch. Returns average cross-entropy loss. */
-  function trainStep(model, data, batchSize, lr) {
-    var C = model.config.C, E = model.config.E, H = model.config.H, V = model.config.V;
-    var Ew = model.weights.Ew, Wh = model.weights.Wh, bh = model.weights.bh;
-    var Wo = model.weights.Wo, bo = model.weights.bo;
-    var gEw = new Float32Array(Ew.length), gWh = new Float32Array(Wh.length);
-    var gbh = new Float32Array(H), gWo = new Float32Array(Wo.length), gbo = new Float32Array(V);
-    var e = new Float32Array(C * E), h = new Float32Array(H);
-    var y = new Float32Array(V), p = new Float32Array(V), dh = new Float32Array(H);
-    var n = data.length, totalLoss = 0, CE = C * E;
+  /* Train one Adam step on a batch (inputs: Int32Array B*C, targets: Int32Array B). */
+  function trainStep(m, inputs, targets, B, lr) {
+    var c = m.config, C = c.C, E = c.E, H = c.H, V = c.V, CH = C * E;
+    var W = m.weights;
+    if (!m.adam) initAdam(m);
+    var st = m.adam;
 
-    for (var b = 0; b < batchSize; b++) {
-      var start = (Math.random() * (n - C - 1)) | 0;
-      for (var c = 0; c < C; c++) {
-        var ch = data[start + c];
-        for (var j = 0; j < E; j++) e[c * E + j] = Ew[ch * E + j];
+    var g = m._grads;
+    if (!g) {
+      g = m._grads = {
+        Ew: new Float32Array(W.Ew.length), Wh: new Float32Array(W.Wh.length),
+        bh: new Float32Array(W.bh.length), Wo: new Float32Array(W.Wo.length),
+        bo: new Float32Array(W.bo.length)
+      };
+    }
+    for (var key in g) g[key].fill(0);
+
+    var loss = 0;
+    var x = new Float32Array(CH), h = new Float32Array(H), logits = new Float32Array(V);
+    var dLogits = new Float32Array(V), dh = new Float32Array(H), dx = new Float32Array(CH);
+    var scale = 1 / B;
+
+    for (var b = 0; b < B; b++) {
+      var base = b * C;
+      for (var ci = 0; ci < C; ci++) {
+        var id = inputs[base + ci];
+        var eo = id * E;
+        for (var e = 0; e < E; e++) x[ci * E + e] = W.Ew[eo + e];
       }
-      for (var j2 = 0; j2 < H; j2++) {
-        var s = bh[j2];
-        for (var i2 = 0; i2 < CE; i2++) s += e[i2] * Wh[i2 * H + j2];
-        h[j2] = s > 0 ? s : 0;
+      for (var j = 0; j < H; j++) {
+        var s = W.bh[j];
+        for (var k = 0; k < CH; k++) s += x[k] * W.Wh[k * H + j];
+        h[j] = s > 0 ? s : 0;
       }
-      for (var k2 = 0; k2 < V; k2++) {
-        var s2 = bo[k2];
-        for (var j3 = 0; j3 < H; j3++) s2 += h[j3] * Wo[j3 * V + k2];
-        y[k2] = s2;
+      for (var v = 0; v < V; v++) {
+        var t = W.bo[v];
+        for (var j2 = 0; j2 < H; j2++) t += h[j2] * W.Wo[j2 * V + v];
+        logits[v] = t;
       }
-      var mx = -1e9;
-      for (var k3 = 0; k3 < V; k3++) if (y[k3] > mx) mx = y[k3];
+      var max = -Infinity, i;
+      for (i = 0; i < V; i++) if (logits[i] > max) max = logits[i];
       var sum = 0;
-      for (var k4 = 0; k4 < V; k4++) { p[k4] = Math.exp(y[k4] - mx); sum += p[k4]; }
-      for (var k5 = 0; k5 < V; k5++) p[k5] /= sum;
-      var target = data[start + C];
-      totalLoss += -Math.log(Math.max(p[target], 1e-9));
+      for (i = 0; i < V; i++) { var ex = Math.exp(logits[i] - max); logits[i] = ex; sum += ex; }
+      var target = targets[b];
+      loss += -Math.log((logits[target] / sum) + 1e-9);
 
-      p[target] -= 1;
-      for (var j4 = 0; j4 < H; j4++) dh[j4] = 0;
-      for (var j5 = 0; j5 < H; j5++) {
-        var hv = h[j5];
-        for (var k6 = 0; k6 < V; k6++) {
-          gWo[j5 * V + k6] += hv * p[k6];
-          dh[j5] += Wo[j5 * V + k6] * p[k6];
+      for (i = 0; i < V; i++) dLogits[i] = logits[i] / sum;
+      dLogits[target] -= 1;
+
+      for (var j3 = 0; j3 < H; j3++) {
+        var ds = 0, wo = j3 * V;
+        for (var v2 = 0; v2 < V; v2++) ds += W.Wo[wo + v2] * dLogits[v2];
+        dh[j3] = ds;
+      }
+      for (var j4 = 0; j4 < H; j4++) {
+        g.bo[j4] += dLogits[j4] * scale;
+        var pre = h[j4] > 0 ? dh[j4] * scale : 0;
+        g.bh[j4] += pre;
+        var wo2 = j4 * V;
+        for (var v3 = 0; v3 < V; v3++) g.Wo[wo2 + v3] += h[j4] * dLogits[v3] * scale;
+        for (var k2 = 0; k2 < CH; k2++) {
+          g.Wh[k2 * H + j4] += x[k2] * pre;
+          dx[k2] = pre * W.Wh[k2 * H + j4];
+        }
+        for (var k3 = 0; k3 < CH; k3++) {
+          var tok = inputs[base + ((k3 / E) | 0)];
+          g.Ew[tok * E + (k3 % E)] += dx[k3];
         }
       }
-      for (var k7 = 0; k7 < V; k7++) gbo[k7] += p[k7];
-      for (var j6 = 0; j6 < H; j6++) {
-        if (h[j6] <= 0) dh[j6] = 0;
-        gbh[j6] += dh[j6];
-        for (var i3 = 0; i3 < CE; i3++) gWh[i3 * H + j6] += e[i3] * dh[j6];
-      }
-      for (var i4 = 0; i4 < CE; i4++) {
-        var de = 0;
-        for (var j7 = 0; j7 < H; j7++) de += Wh[i4 * H + j7] * dh[j7];
-        var pos = (i4 / E) | 0;
-        var off = i4 - pos * E;
-        gEw[data[start + pos] * E + off] += de;
-      }
     }
 
-    var scale = lr / batchSize;
-    for (var a = 0; a < Ew.length; a++) Ew[a] -= scale * gEw[a];
-    for (var a2 = 0; a2 < Wh.length; a2++) Wh[a2] -= scale * gWh[a2];
-    for (var a3 = 0; a3 < H; a3++) bh[a3] -= scale * gbh[a3];
-    for (var a4 = 0; a4 < Wo.length; a4++) Wo[a4] -= scale * gWo[a4];
-    for (var a5 = 0; a5 < V; a5++) bo[a5] -= scale * gbo[a5];
-
-    model.meta.steps += 1;
-    model.meta.loss = totalLoss / batchSize;
-    return model.meta.loss;
+    /* Adam update */
+    st.t++;
+    var b1 = 0.9, b2 = 0.999, eps = 1e-8;
+    var bc1 = 1 - Math.pow(b1, st.t), bc2 = 1 - Math.pow(b2, st.t);
+    for (var kName in W) {
+      var w = W[kName], gr = g[kName], mm = st.m[kName], vv = st.v[kName];
+      for (var p = 0; p < w.length; p++) {
+        var gv = gr[p];
+        mm[p] = b1 * mm[p] + (1 - b1) * gv;
+        vv[p] = b2 * vv[p] + (1 - b2) * gv * gv;
+        w[p] -= lr * (mm[p] / bc1) / (Math.sqrt(vv[p] / bc2) + eps);
+      }
+    }
+    return loss / B;
   }
 
-  /* Sample a continuation of `prompt`. */
-  function generate(model, prompt, opts) {
+  function generate(m, promptIds, opts) {
     opts = opts || {};
-    var maxLen = opts.maxLen || 280;
-    var temp = opts.temperature || 0.8;
-    var topK = Math.min(opts.topK || 24, model.config.V);
-    var C = model.config.C, E = model.config.E, H = model.config.H, V = model.config.V;
-    var Ew = model.weights.Ew, Wh = model.weights.Wh, bh = model.weights.bh;
-    var Wo = model.weights.Wo, bo = model.weights.bo;
-    var map = indexMap(model.chars);
-    var space = map[" "] !== undefined ? map[" "] : 0;
+    var maxNew = opts.maxNew || 60;
+    var temperature = opts.temperature || 0.85;
+    var topK = opts.topK || 40;
+    var penalty = opts.repetitionPenalty || 1.15;
+    var C = m.config.C, V = m.config.V;
 
-    var ctx = new Int32Array(C);
-    var chars = Array.from(prompt);
-    for (var i = 0; i < C; i++) {
-      var ch = chars[chars.length - C + i];
-      ctx[i] = ch && map[ch] !== undefined ? map[ch] : space;
-    }
+    var ctx = [];
+    for (var i = 0; i < promptIds.length; i++) ctx.push(promptIds[i]);
+    if (ctx.length > C) ctx = ctx.slice(-C);
 
-    var e = new Float32Array(C * E), h = new Float32Array(H), y = new Float32Array(V);
-    var out = "";
-    var CE = C * E;
+    var out = [];
+    var recent = ctx.slice(-24);
+    for (var step = 0; step < maxNew; step++) {
+      while (ctx.length < C) ctx.unshift(0);
+      var f = forward(m, ctx);
+      var logits = f.logits;
+      for (var r = 0; r < recent.length; r++) {
+        var tid = recent[r];
+        if (tid >= 0 && tid < V) logits[tid] = logits[tid] > 0 ? logits[tid] / penalty : logits[tid] * penalty;
+      }
+      for (var v = 0; v < V; v++) logits[v] /= temperature;
+      var probs = softmax(logits);
 
-    for (var step = 0; step < maxLen; step++) {
-      for (var c = 0; c < C; c++) for (var j = 0; j < E; j++) e[c * E + j] = Ew[ctx[c] * E + j];
-      for (var j2 = 0; j2 < H; j2++) {
-        var s = bh[j2];
-        for (var i2 = 0; i2 < CE; i2++) s += e[i2] * Wh[i2 * H + j2];
-        h[j2] = s > 0 ? s : 0;
-      }
-      for (var k = 0; k < V; k++) {
-        var s2 = bo[k];
-        for (var j3 = 0; j3 < H; j3++) s2 += h[j3] * Wo[j3 * V + k];
-        y[k] = s2 / temp;
-      }
-      var best = [];
-      for (var k2 = 0; k2 < V; k2++) best.push(k2);
-      best.sort(function (a, b) { return y[b] - y[a]; });
-      best = best.slice(0, topK);
-      var mx = -1e9, bi;
-      for (var t = 0; t < best.length; t++) { bi = best[t]; if (y[bi] > mx) mx = y[bi]; }
-      var sum = 0, probs = [];
-      for (var t2 = 0; t2 < best.length; t2++) {
-        var pr = Math.exp(y[best[t2]] - mx);
-        probs.push(pr); sum += pr;
-      }
-      var r = Math.random() * sum, pick = best[0];
-      for (var t3 = 0; t3 < best.length; t3++) { r -= probs[t3]; if (r <= 0) { pick = best[t3]; break; } }
-      out += model.chars[pick];
-      for (var m = 0; m < C - 1; m++) ctx[m] = ctx[m + 1];
-      ctx[C - 1] = pick;
+      var order = [];
+      for (var v2 = 0; v2 < V; v2++) order.push(v2);
+      order.sort(function (a, b) { return probs[b] - probs[a]; });
+      var cutoff = probs[order[Math.min(topK, V) - 1]];
+      var total = 0;
+      for (var v3 = 0; v3 < V; v3++) if (probs[v3] < cutoff) probs[v3] = 0; else total += probs[v3];
+      var pick = Math.random() * total, acc = 0, chosen = 0;
+      for (var v4 = 0; v4 < V; v4++) { acc += probs[v4]; if (acc >= pick) { chosen = v4; break; } }
+
+      out.push(chosen);
+      ctx.push(chosen);
+      if (ctx.length > C) ctx.shift();
+      recent.push(chosen);
+      if (recent.length > 24) recent.shift();
     }
     return out;
   }
 
   return {
-    CONFIG: CONFIG,
-    createModel: createModel,
-    toJSON: toJSON,
-    fromJSON: fromJSON,
+    paramCount: paramCount,
+    create: create,
+    fromWeights: fromWeights,
+    forward: forward,
+    softmax: softmax,
     trainStep: trainStep,
-    generate: generate,
-    indexMap: indexMap
+    generate: generate
   };
 });

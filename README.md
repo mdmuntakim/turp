@@ -1,38 +1,52 @@
-# Turp — a small AI trained from scratch on GitHub Actions
+# Turp — a word-level AI trained from scratch on GitHub Actions
 
-Turp is a tiny language model with **its own weights, its own trainer, and its own UI**.
-Nothing is borrowed from existing models: every parameter is learned on a **GitHub Actions CPU**
-from `corpus.txt`, checkpoint after checkpoint.
+Turp is its own language model: its own tokenizer, its own weights, its own GGUF file,
+its own UI. Nothing is borrowed from an existing model. It learns on a **GitHub Actions CPU**
+from public-domain English books, one checkpoint at a time.
 
-## How it works
+**Live: https://mdmuntakim.github.io/turp/**
+**Model release: https://github.com/mdmuntakim/turp/releases/tag/turp-v1**
 
-| Part | File | Role |
-|---|---|---|
-| Model | `model.js` | Char-level neural net (context → embeddings → ReLU → softmax) shared by Node + browser |
-| Trainer | `train.js` | Loads the last checkpoint, trains N steps, saves `model.json` |
-| Corpus | `corpus.txt` | The only text Turp learns from |
-| Training | `.github/workflows/train.yml` | Runs **every 3 hours** on GitHub Actions CPU and commits the new checkpoint |
-| Deployment | `.github/workflows/deploy.yml` | Publishes the site to GitHub Pages on every push |
-| UI | `index.html` | Loads `model.json` from the repo and chats with it in the browser |
+## What kind of model is it?
 
-## Live
+| | |
+|---|---|
+| Type | Word-level neural language model (context → embeddings → ReLU → softmax) |
+| Vocabulary | 4,000 tokens |
+| Context | 16 tokens |
+| Embedding / hidden | 64 / 320 |
+| Parameters | ~1.9 million |
+| File | `turp-v1.gguf` — real GGUF v3 container, ~7.5 MB |
+| Trainer | Adam, 2,000 steps per run, batch 32 |
+| Corpus | ~1.5 MB of public-domain English (Alice, Grimm, Andersen, Pride and Prejudice, Sherlock Holmes) + chat patterns |
 
-**https://mdmuntakim.github.io/turp/**
+The browser fetches **`turp-v1.gguf`** and parses it with `gguf.js` — the weights are not
+stored as JSON.
 
-## Reality check
+## How the loop works
 
-Turp is ~93,000 parameters (under the 1-lakh cap by construction). That is a real neural
-network, but it is a *small* one: it completes text and answers simple learned patterns, it
-does not reason like ChatGPT. Making it bigger does not fit in a 100 MB file — file size ≈
-parameters × bytes-per-parameter. At 4-bit, 100 MB ≈ 200M params max.
+1. `.github/workflows/train.yml` runs every 3 hours (and on demand).
+2. `train.js` loads the last `turp-v1.gguf`, trains 2,000 steps on the Actions CPU, writes a new checkpoint.
+3. The checkpoint is committed to `main` (which triggers the Pages deploy) and uploaded to the `turp-v1` release.
+4. `index.html` + `gguf.js` + `model.js` load the GGUF and generate in the visitor's browser.
 
-Everything runs on GitHub — training in Actions, inference in the visitor's browser. No phone,
-no local server, no API key.
+## Files
 
-## Manual training run
+| File | Role |
+|---|---|
+| `tokenizer.js` | Word/punctuation tokenizer and detokenizer |
+| `model.js` | Forward pass, Adam training step, sampling |
+| `gguf.js` | GGUF v3 writer/reader (Node + browser) |
+| `train.js` | Incremental trainer |
+| `corpus.txt` | The only training text |
+| `index.html` | Black-and-white chat UI |
 
-```sh
-node train.js --steps 1200 --batch 32 --lr 0.08
-```
+## Honest limits
 
-Or trigger **Actions → Train Turp → Run workflow**.
+A ~1.9M-parameter word-level model writes simple English and short continuations. It is
+**not** ChatGPT-level and does not reason. More scheduled runs keep improving it.
+
+On size: GitHub release assets allow up to **2 GB per file**, so uploading a 1.7 GB file is
+possible. Training a 1.7 GB model (≈3.4B parameters at 4-bit) from scratch is not possible on
+an Actions CPU — it would need roughly 70B training tokens and GPU-months. This model is the
+largest size that can actually be trained to say real English on CPU in a scheduled run.

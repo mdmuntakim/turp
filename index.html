@@ -5,98 +5,201 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Turp</title>
 <style>
-body{font-family:monospace;max-width:720px;margin:24px auto;padding:0 14px;line-height:1.5}
-#stats{color:#555;margin:6px 0 14px}
-#messages{min-height:40vh}
-#messages div{margin:10px 0;white-space:pre-wrap}
-#messages b{display:inline}
-#row{display:flex;gap:6px;margin-top:14px}
-#input{flex:1;font:inherit;padding:4px}
+  :root{--fg:#000;--bg:#fff;--muted:#6b6b6b;--line:#e5e5e5;--bubble:#f4f4f4}
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6}
+  header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 20px}
+  .bar{max-width:760px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted)}
+  .bar b{color:var(--fg);font-size:15px}
+  .tag{border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:10px;letter-spacing:.08em}
+  main{max-width:760px;margin:0 auto;padding:28px 20px 150px;display:flex;flex-direction:column;gap:26px}
+  .msg{display:flex;flex-direction:column}
+  .msg.user{align-self:flex-end;align-items:flex-end;max-width:85%}
+  .msg.user .bubble{background:var(--bubble);border-radius:20px;padding:11px 16px;white-space:pre-wrap;word-break:break-word}
+  .msg.assistant{align-self:stretch}
+  .who{font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px}
+  .text{white-space:pre-wrap;word-break:break-word}
+  .text:empty::after{content:"▍";color:var(--muted)}
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;min-height:55vh;text-align:center}
+  .empty h1{font-size:26px;font-weight:600;margin:0}
+  .empty p{color:var(--muted);max-width:460px;margin:0;font-size:14px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;font-size:13px;cursor:pointer;color:var(--fg)}
+  .chip:hover{background:var(--bubble)}
+  .composer{position:fixed;left:0;right:0;bottom:0;padding:14px 20px 22px;background:linear-gradient(180deg,rgba(255,255,255,0),#fff 28%)}
+  .composer-inner{max-width:760px;margin:0 auto;display:flex;align-items:flex-end;gap:8px;border:1px solid var(--line);border-radius:26px;padding:10px 10px 10px 18px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+  textarea{flex:1;border:0;outline:0;resize:none;background:transparent;font:inherit;font-size:16px;line-height:1.5;max-height:180px;min-height:24px;color:var(--fg)}
+  textarea::placeholder{color:var(--muted)}
+  #send{width:34px;height:34px;flex:0 0 34px;border:0;border-radius:50%;background:#000;color:#fff;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  #send:disabled{background:#c4c4c4;cursor:not-allowed}
+  .note{max-width:760px;margin:8px auto 0;text-align:center;font-size:11px;color:var(--muted)}
 </style>
 </head>
 <body>
-<div><b>Turp</b> — <span id="status">loading model…</span></div>
-<div id="stats">params — · steps — · loss —</div>
-<div id="messages"></div>
-<div id="row">
-  <input id="input" placeholder="Message Turp…" disabled>
-  <button id="send" disabled>Send</button>
+<header>
+  <div class="bar">
+    <div><b>Turp</b> <span class="tag">GGUF</span> · <span id="status">loading model…</span></div>
+    <div id="stats">—</div>
+  </div>
+</header>
+
+<main id="messages">
+  <div class="empty" id="emptyState">
+    <h1>What can I help with?</h1>
+    <p>Turp is a small model trained from scratch on GitHub Actions. It writes simple English and learns more every 3 hours.</p>
+    <div class="chips">
+      <div class="chip">What is Turp?</div>
+      <div class="chip">Tell me a story</div>
+      <div class="chip">Who was Alice?</div>
+      <div class="chip">What is a dragon?</div>
+    </div>
+  </div>
+</main>
+
+<div class="composer">
+  <div class="composer-inner">
+    <textarea id="input" rows="1" placeholder="Message Turp" disabled></textarea>
+    <button id="send" disabled title="Send">↑</button>
+  </div>
+  <div class="note">Self-trained word-level model · served as <code>turp-v1.gguf</code></div>
 </div>
+
+<script src="tokenizer.js"></script>
+<script src="gguf.js"></script>
 <script src="model.js"></script>
 <script>
 (function () {
+  "use strict";
   var $ = function (id) { return document.getElementById(id); };
-  var model = null, history = [], busy = false;
+  var state = { model: null, vocab: null, map: null, history: [], busy: false };
+  var streamTimer = null;
 
-  function line(who, text) {
-    var d = document.createElement("div");
-    var b = document.createElement("b");
-    b.textContent = who + ": ";
-    d.appendChild(b);
-    d.appendChild(document.createTextNode(text));
-    $("messages").appendChild(d);
+  function setStatus(t) { $("status").textContent = t; }
+
+  function addUser(text) {
+    var m = document.createElement("div");
+    m.className = "msg user";
+    var b = document.createElement("div");
+    b.className = "bubble";
+    b.textContent = text;
+    m.appendChild(b);
+    $("messages").appendChild(m);
     window.scrollTo(0, document.body.scrollHeight);
-    return d;
+  }
+
+  function addAssistant() {
+    var m = document.createElement("div");
+    m.className = "msg assistant";
+    var who = document.createElement("div");
+    who.className = "who";
+    who.textContent = "Turp";
+    var t = document.createElement("div");
+    t.className = "text";
+    m.appendChild(who);
+    m.appendChild(t);
+    $("messages").appendChild(m);
+    window.scrollTo(0, document.body.scrollHeight);
+    return t;
   }
 
   function promptFor(msg) {
-    var recent = history.slice(-6).map(function (m) {
+    var recent = state.history.slice(-2).map(function (m) {
       return (m.role === "user" ? "User: " : "Turp: ") + m.content;
     }).join("\n");
     return (recent ? recent + "\n" : "") + "User: " + msg + "\nTurp:";
   }
 
+  function reveal(el, text, done) {
+    var parts = text.split(" "), i = 0;
+    if (streamTimer) clearInterval(streamTimer);
+    el.textContent = "";
+    streamTimer = setInterval(function () {
+      i += 1;
+      el.textContent = parts.slice(0, i).join(" ");
+      window.scrollTo(0, document.body.scrollHeight);
+      if (i >= parts.length) {
+        clearInterval(streamTimer);
+        streamTimer = null;
+        el.textContent = text;
+        done();
+      }
+    }, 25);
+  }
+
   function send() {
+    if (!state.model || state.busy) return;
     var input = $("input");
     var text = input.value.trim();
-    if (!model || busy || !text) return;
+    if (!text) return;
     input.value = "";
-    line("You", text);
-    history.push({ role: "user", content: text });
-    var el = line("Turp", "…");
-    busy = true;
+    input.style.height = "auto";
+    addUser(text);
+    state.history.push({ role: "user", content: text });
+    var outEl = addAssistant();
+    state.busy = true;
     $("send").disabled = true;
 
     setTimeout(function () {
+      var out;
       try {
-        var out = TurpModel.generate(model, promptFor(text), { maxLen: 320, temperature: 0.75, topK: 18 });
-        var cut = out.indexOf("\nUser:");
-        if (cut >= 0) out = out.slice(0, cut);
-        out = out.trim() || "I have not learned enough to answer that yet.";
-        el.lastChild.textContent = out;
-        history.push({ role: "assistant", content: out });
-        if (history.length > 12) history = history.slice(-12);
+        var promptIds = Array.from(TurpTokenizer.encode(promptFor(text), state.map));
+        var ids = TurpModel.generate(state.model, promptIds, { maxNew: 70, temperature: 0.85, topK: 40 });
+        out = TurpTokenizer.decode(ids, state.vocab);
+        var stop = out.search(/\n?\s*User:/);
+        if (stop >= 0) out = out.slice(0, stop);
+        out = out.replace(/\s+/g, " ").trim();
+        if (!out) out = "I have not learned enough to answer that yet.";
       } catch (e) {
-        el.lastChild.textContent = "error: " + e.message;
+        out = "error: " + (e && e.message ? e.message : String(e));
       }
-      busy = false;
-      $("send").disabled = false;
-    }, 20);
+      reveal(outEl, out, function () {
+        state.history.push({ role: "assistant", content: out });
+        if (state.history.length > 6) state.history = state.history.slice(-6);
+        state.busy = false;
+        $("send").disabled = false;
+        $("input").focus();
+      });
+    }, 30);
   }
 
-  fetch("model.json?t=" + Date.now())
-    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-    .then(function (json) {
-      model = TurpModel.fromJSON(json);
-      var m = model.meta;
-      $("stats").textContent = "params " + Number(m.params).toLocaleString("en-US") +
-        " · steps " + Number(m.steps).toLocaleString("en-US") +
-        " · loss " + Number(m.loss).toFixed(3) +
-        " · checkpoint " + m.updated;
-      $("status").textContent = "model loaded (trained from scratch on GitHub Actions)";
-      $("input").disabled = false;
-      $("send").disabled = false;
-      $("input").focus();
-    })
-    .catch(function (e) {
-      $("status").textContent = "model not available yet";
-      line("Turp", "No trained model found (" + e.message + "). Run the Train Turp workflow in GitHub Actions.");
-    });
+  function load() {
+    fetch("turp-v1.gguf?t=" + Date.now())
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.arrayBuffer(); })
+      .then(function (buf) {
+        var ck = TurpGGUF.parse(buf);
+        state.model = TurpModel.fromWeights(ck.config, ck.weights);
+        state.vocab = ck.vocab;
+        state.map = TurpTokenizer.makeMap(ck.vocab);
+        var m = ck.meta;
+        $("stats").textContent = TurpModel.paramCount(ck.config).toLocaleString("en-US") + " params · " +
+          Number(m.steps).toLocaleString("en-US") + " steps · loss " + Number(m.loss).toFixed(3);
+        setStatus("model loaded");
+        $("input").disabled = false;
+        $("send").disabled = false;
+        $("input").focus();
+      })
+      .catch(function (e) {
+        setStatus("model not available yet");
+        var el = addAssistant();
+        el.textContent = "Could not load turp-v1.gguf (" + e.message + "). The “Train Turp” workflow creates it on GitHub Actions.";
+      });
+  }
 
   $("send").onclick = send;
   $("input").onkeydown = function (e) {
-    if (e.key === "Enter") { e.preventDefault(); send(); }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
+  $("input").oninput = function () {
+    var el = $("input");
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 180) + "px";
+  };
+  document.querySelectorAll(".chip").forEach(function (chip) {
+    chip.onclick = function () { $("input").value = chip.textContent; $("input").focus(); };
+  });
+
+  load();
 })();
 </script>
 </body>

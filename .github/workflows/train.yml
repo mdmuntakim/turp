@@ -23,16 +23,25 @@ jobs:
           node-version: 20
 
       - name: Train checkpoint
-        run: node train.js --steps 1200 --batch 32 --lr 0.08
+        run: node train.js --steps 2000 --batch 32 --lr 0.0025
 
       - name: Commit checkpoint
         run: |
           git config user.name "turp-trainer"
           git config user.email "turp-trainer@users.noreply.github.com"
-          git add model.json
+          git add turp-v1.gguf
           if git diff --cached --quiet; then
             echo "no checkpoint change"
           else
             git commit -m "train: checkpoint $(date -u +%Y-%m-%dT%H:%MZ)"
             git push
           fi
+
+      - name: Publish GGUF release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view turp-v1 >/dev/null 2>&1 || gh release create turp-v1 \
+            --title "Turp v1 (GGUF)" \
+            --notes "Turp's own weights, trained from scratch on GitHub Actions CPU. GGUF v3 container with the custom 'turp' word-level architecture."
+          gh release upload turp-v1 turp-v1.gguf --clobber

@@ -1,57 +1,81 @@
 #!/usr/bin/env node
-/* Turp trainer — runs on GitHub Actions CPU.
- * Loads an existing checkpoint (if any), continues training, saves model.json.
- */
+/* Incremental Turp trainer. Loads turp-v1.gguf (or starts fresh), trains, rewrites it. */
 "use strict";
 const fs = require("fs");
 const path = require("path");
-const Turp = require("./model.js");
+const { buildVocab, makeMap, encode, decode } = require("./tokenizer.js");
+const TurpModel = require("./model.js");
+const GGUF = require("./gguf.js");
 
-const args = process.argv.slice(2);
+const root = __dirname;
+const CHECKPOINT = path.join(root, "turp-v1.gguf");
+const CORPUS = path.join(root, "corpus.txt");
+
 function arg(name, def) {
-  const i = args.indexOf("--" + name);
-  return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : def;
+  const i = process.argv.indexOf("--" + name);
+  return i >= 0 ? Number(process.argv[i + 1]) : def;
 }
 
-const corpusPath = path.join(__dirname, "corpus.txt");
-const modelPath = path.join(__dirname, "model.json");
+const STEPS = arg("steps", 2000);
+const BATCH = arg("batch", 32);
+const LR = arg("lr", 0.0025);
+const CONFIG = { V: 4000, C: 16, E: 64, H: 320 };
 
-const text = fs.readFileSync(corpusPath, "utf8");
-const chars = Array.from(new Set(Array.from(text))).sort();
+function main() {
+  const text = fs.readFileSync(CORPUS, "utf8");
+  let model, vocab, prevSteps = 0;
 
-let model = null;
-if (fs.existsSync(modelPath)) {
-  try {
-    const m = Turp.fromJSON(fs.readFileSync(modelPath, "utf8"));
-    if (m.chars.join("") === chars.join("")) model = m;
-    else console.log("vocabulary changed — starting fresh");
-  } catch (e) {
-    console.log("checkpoint unreadable — starting fresh:", e.message);
+  if (fs.existsSync(CHECKPOINT)) {
+    const ck = GGUF.parse(fs.readFileSync(CHECKPOINT));
+    model = TurpModel.fromWeights(ck.config, ck.weights);
+    vocab = ck.vocab;
+    prevSteps = ck.meta.steps || 0;
+    console.log(`loaded checkpoint: ${prevSteps} steps, ${vocab.length} vocab, ${TurpModel.paramCount(model.config).toLocaleString()} params`);
+  } else {
+    vocab = buildVocab(text, CONFIG.V);
+    model = TurpModel.create({ V: vocab.length, C: CONFIG.C, E: CONFIG.E, H: CONFIG.H });
+    console.log(`new model: ${TurpModel.paramCount(model.config).toLocaleString()} params, ${vocab.length} vocab`);
   }
+
+  const map = makeMap(vocab);
+  let ids = encode(text, map);
+  console.log(`corpus: ${text.length.toLocaleString()} bytes, ${ids.length.toLocaleString()} tokens`);
+
+  /* drop <unk>-heavy runs by keeping ids as-is; sampling avoids issues naturally */
+  const inputs = new Int32Array(BATCH * model.config.C);
+  const targets = new Int32Array(BATCH);
+  const maxStart = ids.length - model.config.C - 1;
+  let lossSum = 0, lossCount = 0, totalLoss = 0, totalSteps = 0;
+  const t0 = Date.now();
+
+  for (let step = 1; step <= STEPS; step++) {
+    for (let b = 0; b < BATCH; b++) {
+      const start = (Math.random() * maxStart) | 0;
+      for (let c = 0; c < model.config.C; c++) inputs[b * model.config.C + c] = ids[start + c];
+      targets[b] = ids[start + model.config.C];
+    }
+    const loss = TurpModel.trainStep(model, inputs, targets, BATCH, LR);
+    lossSum += loss; lossCount++;
+    totalLoss += loss; totalSteps++;
+    if (step % 50 === 0 || step === 1) {
+      const secs = (Date.now() - t0) / 1000;
+      console.log(`step ${step}/${STEPS}  loss ${(lossSum / lossCount).toFixed(3)}  ${(secs / step * 1000).toFixed(0)} ms/step`);
+      lossSum = 0; lossCount = 0;
+    }
+  }
+
+  const prompt = "User: What is Turp?\nTurp:";
+  const out = TurpModel.generate(model, Array.from(encode(prompt, map)), { maxNew: 60, temperature: 0.8, topK: 30 });
+  console.log("\n--- sample ---\n" + decode(out, vocab) + "\n--------------");
+
+  const meta = {
+    steps: prevSteps + STEPS,
+    loss: totalLoss / Math.max(1, totalSteps),
+    updated: new Date().toISOString()
+  };
+  const bytes = GGUF.build({ config: model.config, vocab: vocab, weights: model.weights, meta: meta });
+  fs.writeFileSync(CHECKPOINT, Buffer.from(bytes));
+  console.log(`wrote ${CHECKPOINT} (${(bytes.length / 1024 / 1024).toFixed(2)} MB), total steps ${meta.steps}`);
 }
-if (!model) model = Turp.createModel(chars);
 
-const data = new Uint32Array(Array.from(text).map(ch => model.chars.indexOf(ch)));
-
-const steps = parseInt(arg("steps", "1500"), 10);
-const batch = parseInt(arg("batch", "32"), 10);
-const lr = parseFloat(arg("lr", "0.08"));
-
-const t0 = Date.now();
-let loss = model.meta.loss;
-for (let i = 0; i < steps; i++) {
-  loss = Turp.trainStep(model, data, batch, lr);
-  if (i % 200 === 0) console.log(`step ${model.meta.steps}  loss ${loss.toFixed(4)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-}
-
-model.meta.loss = loss;
-model.meta.updated = new Date().toISOString();
-fs.writeFileSync(modelPath, Turp.toJSON(model));
-
-const kb = (fs.statSync(modelPath).size / 1024).toFixed(0);
-console.log(`saved ${modelPath}`);
-console.log(`params=${model.meta.params}  steps=${model.meta.steps}  loss=${loss.toFixed(4)}  size=${kb} KB  vocab=${model.config.V}`);
-
-// quick qualitative sample
-console.log("\n--- sample ---");
-console.log(Turp.generate(model, "User: What is Turp?\nTurp:", { maxLen: 160, temperature: 0.8, topK: 20 }));
+main();

@@ -57,13 +57,12 @@ jobs:
           python train.py \
             --data data/tinystories.txt \
             --model work/model \
-            --steps 1200 --batch 8 --seq 128 --milestone 100000
+            --steps 20000 --batch 8 --seq 128 --milestone 100000
 
       - name: Convert to GGUF
         run: |
           git clone --depth 1 https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp
-          python /tmp/llama.cpp/convert_hf_to_gguf.py work/model \
-            --outfile turp-v1.gguf --outtype f16
+          python convert_gguf.py
           ls -la turp-v1.gguf
 
       - name: Commit checkpoint

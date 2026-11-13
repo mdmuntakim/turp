@@ -196,7 +196,7 @@ function updateTrainingUi() {
   const remain = m - inSeg;
   const eta = state.paused ? "training paused"
     : state.running ? "training now"
-    : "ETA " + duration(remain / 1200 * 3 * 3600000);
+    : "ETA " + duration(remain / 20000 * 3 * 3600000);
   $("mProgress").textContent = pct.toFixed(1) + "% · " + eta;
 }
 

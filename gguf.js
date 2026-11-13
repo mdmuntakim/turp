@@ -50,7 +50,7 @@
     w.u32(MAGIC);
     w.u32(VERSION);
     w.u64(5);
-    w.u64(11);
+    w.u64(12);
 
     w.str("general.architecture"); w.u32(T_STRING); w.str("turp");
     w.str("general.name"); w.u32(T_STRING); w.str("Turp");
@@ -60,6 +60,7 @@
     w.str("turp.hidden_length"); w.u32(T_UINT32); w.u32(c.H);
     w.str("turp.vocab_size"); w.u32(T_UINT32); w.u32(c.V);
     w.str("turp.training_steps"); w.u32(T_UINT32); w.u32(meta.steps || 0);
+    w.str("turp.milestone"); w.u32(T_UINT32); w.u32(meta.milestone || 100000);
     w.str("turp.training_loss"); w.u32(T_FLOAT32); w.f32(meta.loss || 0);
     w.str("turp.updated"); w.u32(T_STRING); w.str(meta.updated || "");
     w.str("turp.vocab"); w.u32(T_ARRAY); w.u32(T_STRING); w.u64(vocab.length);
@@ -172,6 +173,7 @@
       weights: weights,
       meta: {
         steps: kv["turp.training_steps"] || 0,
+        milestone: kv["turp.milestone"] || 100000,
         loss: kv["turp.training_loss"] || 0,
         updated: kv["turp.updated"] || ""
       }

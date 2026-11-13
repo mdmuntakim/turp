@@ -45,3 +45,17 @@ jobs:
             --title "Turp v1 (GGUF)" \
             --notes "Turp's own weights, trained from scratch on GitHub Actions CPU. GGUF v3 container with the custom 'turp' word-level architecture."
           gh release upload turp-v1 turp-v1.gguf --clobber
+
+      - name: Milestone snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          STEPS=$(node -e "const fs=require('fs');const g=require('./gguf.js');console.log(g.parse(fs.readFileSync('turp-v1.gguf')).meta.steps)" 2>/dev/null || echo 0)
+          echo "steps=$STEPS"
+          if [ "$STEPS" -gt 0 ] && [ $((STEPS % 100000)) -eq 0 ]; then
+            gh release view "turp-${STEPS}" >/dev/null 2>&1 || \
+              gh release create "turp-${STEPS}" turp-v1.gguf \
+                --title "Turp — ${STEPS} steps" \
+                --notes "Checkpoint after ${STEPS} training steps, trained from scratch on GitHub Actions CPU."
+            echo "milestone release turp-${STEPS} ready"
+          fi

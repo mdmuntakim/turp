@@ -19,7 +19,7 @@ function arg(name, def) {
 const STEPS = arg("steps", 2000);
 const BATCH = arg("batch", 32);
 const LR = arg("lr", 0.0025);
-const CONFIG = { V: 4000, C: 16, E: 64, H: 320 };
+const CONFIG = { V: 4000, C: 16, E: 64, H: 347 };
 
 function main() {
   const text = fs.readFileSync(CORPUS, "utf8");

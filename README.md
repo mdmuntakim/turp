@@ -15,8 +15,8 @@ from public-domain English books, one checkpoint at a time.
 | Vocabulary | 4,000 tokens |
 | Context | 16 tokens |
 | Embedding / hidden | 64 / 320 |
-| Parameters | ~1.9 million |
-| File | `turp-v1.gguf` — real GGUF v3 container, ~7.5 MB |
+| Parameters | 2,003,675 (~2.0 million) |
+| File | `turp-v1.gguf` — real GGUF v3 container, ~7.6 MB |
 | Trainer | Adam, 2,000 steps per run, batch 32 |
 | Corpus | ~1.5 MB of public-domain English (Alice, Grimm, Andersen, Pride and Prejudice, Sherlock Holmes) + chat patterns |
 
@@ -43,7 +43,7 @@ stored as JSON.
 
 ## Honest limits
 
-A ~1.9M-parameter word-level model writes simple English and short continuations. It is
+A 2,003,675-parameter word-level model writes simple English and short continuations. It is
 **not** ChatGPT-level and does not reason. More scheduled runs keep improving it.
 
 On size: GitHub release assets allow up to **2 GB per file**, so uploading a 1.7 GB file is

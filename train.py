@@ -45,7 +45,7 @@ def load_tokenizer(model_dir):
     )
 
 
-def make_ids(tok, data_path, qa_path, repeat_qa=30):
+def make_ids(tok, data_path, project_dir, repeat_qa=30, repeat_chat=500, repeat_code=300):
     story_text = Path(data_path).read_text(encoding="utf-8", errors="ignore")
     chunks = [c.strip() for c in story_text.split(EOS) if c.strip()]
     ids = []
@@ -55,11 +55,15 @@ def make_ids(tok, data_path, qa_path, repeat_qa=30):
         ids.append(eos_id)
         if i % 20000 == 0:
             log(f"  tokenized {i}/{len(chunks)} stories")
-    if qa_path and Path(qa_path).exists():
-        qa = Path(qa_path).read_text(encoding="utf-8", errors="ignore").strip()
-        block = (qa + "\n\n") * repeat_qa
-        ids.extend(tok.encode(block).ids)
+    for name, times in (("qa.txt", repeat_qa), ("chat.txt", repeat_chat), ("code.txt", repeat_code)):
+        p = Path(project_dir) / name
+        if not p.exists():
+            continue
+        block = p.read_text(encoding="utf-8", errors="ignore").strip() + "\n\n"
+        for _ in range(times):
+            ids.extend(tok.encode(block).ids)
         ids.append(eos_id)
+        log(f"  mixed {name} x{times}")
     return np.array(ids, dtype=np.int32)
 
 
@@ -130,7 +134,7 @@ def main():
         log(f"milestone cap: {steps_to_run} steps to reach {steps_done + steps_to_run}")
 
     log("encoding corpus")
-    ids = make_ids(tok, args.data, str(Path(__file__).resolve().parent / "qa.txt"))
+    ids = make_ids(tok, args.data, str(Path(__file__).resolve().parent))
     if len(ids) < args.seq + 2:
         raise SystemExit("corpus too small")
     log(f"corpus tokens: {len(ids):,}")
@@ -206,7 +210,7 @@ def main():
     }
 
     model.eval()
-    prompt = "User: What is a dragon?\nTurp:"
+    prompt = "User: hi bro\nTurp:"
     with torch.no_grad():
         gen = model.generate(
             torch.tensor([tok.encode(prompt).ids]),

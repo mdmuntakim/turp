@@ -1,0 +1,635 @@
+User: write a C program to print hello world
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    printf("Hello, World!\n");
+    return 0;
+}
+```
+User: write a python program to print hello world
+Turp:
+```python
+print("Hello, World!")
+```
+User: write a C program to add two numbers
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a = 3, b = 5;
+    printf("%d\n", a + b);
+    return 0;
+}
+```
+User: write a python program to add two numbers
+Turp:
+```python
+a = 3
+b = 5
+print(a + b)
+```
+User: write a C program to swap two numbers
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a = 1, b = 2, t;
+    t = a; a = b; b = t;
+    printf("%d %d\n", a, b);
+    return 0;
+}
+```
+User: write a C program to print numbers from 1 to 10
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    for (int i = 1; i <= 10; i++) {
+        printf("%d\n", i);
+    }
+    return 0;
+}
+```
+User: write a python program to print numbers from 1 to 10
+Turp:
+```python
+for i in range(1, 11):
+    print(i)
+```
+User: write a C program to print even numbers
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    for (int i = 0; i <= 10; i += 2) {
+        printf("%d\n", i);
+    }
+    return 0;
+}
+```
+User: write a C program to check even or odd
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int n = 7;
+    if (n % 2 == 0) printf("even\n");
+    else printf("odd\n");
+    return 0;
+}
+```
+User: write a python program to check even or odd
+Turp:
+```python
+n = 7
+if n % 2 == 0:
+    print("even")
+else:
+    print("odd")
+```
+User: write a C program to find the largest of two numbers
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a = 4, b = 9;
+    printf("%d\n", a > b ? a : b);
+    return 0;
+}
+```
+User: write a C program to find the largest of three numbers
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a = 4, b = 9, c = 6, m = a;
+    if (b > m) m = b;
+    if (c > m) m = c;
+    printf("%d\n", m);
+    return 0;
+}
+```
+User: write a C program to calculate factorial
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int n = 5;
+    long f = 1;
+    for (int i = 2; i <= n; i++) f *= i;
+    printf("%ld\n", f);
+    return 0;
+}
+```
+User: write a python program to calculate factorial
+Turp:
+```python
+def fact(n):
+    f = 1
+    for i in range(2, n + 1):
+        f *= i
+    return f
+
+print(fact(5))
+```
+User: write a recursive factorial in C
+Turp:
+```c
+#include <stdio.h>
+
+int fact(int n) {
+    if (n <= 1) return 1;
+    return n * fact(n - 1);
+}
+
+int main(void) {
+    printf("%d\n", fact(5));
+    return 0;
+}
+```
+User: write a C program for fibonacci
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a = 0, b = 1, n = 10;
+    for (int i = 0; i < n; i++) {
+        printf("%d ", a);
+        int t = a + b;
+        a = b;
+        b = t;
+    }
+    return 0;
+}
+```
+User: write a python program for fibonacci
+Turp:
+```python
+a, b = 0, 1
+for _ in range(10):
+    print(a, end=" ")
+    a, b = b, a + b
+```
+User: write a C program to sum an array
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a[] = {1, 2, 3, 4, 5};
+    int n = 5, sum = 0;
+    for (int i = 0; i < n; i++) sum += a[i];
+    printf("%d\n", sum);
+    return 0;
+}
+```
+User: write a python program to sum a list
+Turp:
+```python
+nums = [1, 2, 3, 4, 5]
+print(sum(nums))
+```
+User: write a C program to find the maximum in an array
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a[] = {3, 9, 2, 7};
+    int n = 4, m = a[0];
+    for (int i = 1; i < n; i++) if (a[i] > m) m = a[i];
+    printf("%d\n", m);
+    return 0;
+}
+```
+User: write a C program for bubble sort
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a[] = {5, 1, 4, 2, 3};
+    int n = 5;
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n - 1; j++)
+            if (a[j] > a[j + 1]) {
+                int t = a[j]; a[j] = a[j + 1]; a[j + 1] = t;
+            }
+    for (int i = 0; i < n; i++) printf("%d ", a[i]);
+    return 0;
+}
+```
+User: write a python program to sort a list
+Turp:
+```python
+nums = [5, 1, 4, 2, 3]
+nums.sort()
+print(nums)
+```
+User: write a C program for linear search
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a[] = {4, 8, 2, 9};
+    int n = 4, key = 2, pos = -1;
+    for (int i = 0; i < n; i++) if (a[i] == key) pos = i;
+    printf("%d\n", pos);
+    return 0;
+}
+```
+User: write a C program for binary search
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a[] = {1, 3, 5, 7, 9};
+    int n = 5, key = 7, lo = 0, hi = n - 1, pos = -1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        if (a[mid] == key) { pos = mid; break; }
+        if (a[mid] < key) lo = mid + 1;
+        else hi = mid - 1;
+    }
+    printf("%d\n", pos);
+    return 0;
+}
+```
+User: write a C program to find string length
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    char s[] = "hello";
+    int n = 0;
+    while (s[n] != '\0') n++;
+    printf("%d\n", n);
+    return 0;
+}
+```
+User: write a C program to reverse a string
+Turp:
+```c
+#include <stdio.h>
+#include <string.h>
+
+int main(void) {
+    char s[] = "hello";
+    int n = strlen(s);
+    for (int i = n - 1; i >= 0; i--) putchar(s[i]);
+    putchar('\n');
+    return 0;
+}
+```
+User: write a python program to reverse a string
+Turp:
+```python
+s = "hello"
+print(s[::-1])
+```
+User: write a C program to check palindrome
+Turp:
+```c
+#include <stdio.h>
+#include <string.h>
+
+int main(void) {
+    char s[] = "madam";
+    int n = strlen(s), ok = 1;
+    for (int i = 0; i < n / 2; i++)
+        if (s[i] != s[n - 1 - i]) ok = 0;
+    printf("%s\n", ok ? "yes" : "no");
+    return 0;
+}
+```
+User: write a python program to check palindrome
+Turp:
+```python
+s = "madam"
+print(s == s[::-1])
+```
+User: write a C program to count vowels
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    char s[] = "hello world";
+    int c = 0;
+    for (int i = 0; s[i]; i++) {
+        char ch = s[i];
+        if (ch=='a'||ch=='e'||ch=='i'||ch=='o'||ch=='u') c++;
+    }
+    printf("%d\n", c);
+    return 0;
+}
+```
+User: write a C program using a struct
+Turp:
+```c
+#include <stdio.h>
+
+struct Point {
+    int x;
+    int y;
+};
+
+int main(void) {
+    struct Point p = {3, 4};
+    printf("%d %d\n", p.x, p.y);
+    return 0;
+}
+```
+User: write a C program using pointers
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int n = 5;
+    int *p = &n;
+    printf("%d\n", *p);
+    *p = 9;
+    printf("%d\n", n);
+    return 0;
+}
+```
+User: write a C program with malloc
+Turp:
+```c
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(void) {
+    int *a = malloc(5 * sizeof(int));
+    if (!a) return 1;
+    for (int i = 0; i < 5; i++) a[i] = i;
+    printf("%d\n", a[4]);
+    free(a);
+    return 0;
+}
+```
+User: write a C program to write a file
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    FILE *f = fopen("out.txt", "w");
+    if (!f) return 1;
+    fprintf(f, "hello\n");
+    fclose(f);
+    return 0;
+}
+```
+User: write a python program to write a file
+Turp:
+```python
+with open("out.txt", "w") as f:
+    f.write("hello\n")
+```
+User: write a python program to read a file
+Turp:
+```python
+with open("out.txt") as f:
+    print(f.read())
+```
+User: write a C program to check prime
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int n = 13, ok = n > 1;
+    for (int i = 2; i * i <= n; i++)
+        if (n % i == 0) ok = 0;
+    printf("%s\n", ok ? "prime" : "not prime");
+    return 0;
+}
+```
+User: write a python program to check prime
+Turp:
+```python
+n = 13
+ok = n > 1
+for i in range(2, int(n ** 0.5) + 1):
+    if n % i == 0:
+        ok = False
+print(ok)
+```
+User: write a C program for gcd
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a = 12, b = 18;
+    while (b) {
+        int t = b;
+        b = a % b;
+        a = t;
+    }
+    printf("%d\n", a);
+    return 0;
+}
+```
+User: write a python program for gcd
+Turp:
+```python
+import math
+
+print(math.gcd(12, 18))
+```
+User: write a C program to convert celsius to fahrenheit
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    float c = 25.0;
+    printf("%.1f\n", c * 9 / 5 + 32);
+    return 0;
+}
+```
+User: write a C program to print a multiplication table
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int n = 5;
+    for (int i = 1; i <= 10; i++) {
+        printf("%d x %d = %d\n", n, i, n * i);
+    }
+    return 0;
+}
+```
+User: write a C program to print a triangle
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int n = 5;
+    for (int i = 1; i <= n; i++) {
+        for (int j = 0; j < i; j++) putchar('*');
+        putchar('\n');
+    }
+    return 0;
+}
+```
+User: write a python program to print a triangle
+Turp:
+```python
+n = 5
+for i in range(1, n + 1):
+    print("*" * i)
+```
+User: write a C program for fizzbuzz
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    for (int i = 1; i <= 15; i++) {
+        if (i % 15 == 0) printf("FizzBuzz\n");
+        else if (i % 3 == 0) printf("Fizz\n");
+        else if (i % 5 == 0) printf("Buzz\n");
+        else printf("%d\n", i);
+    }
+    return 0;
+}
+```
+User: write a python program for fizzbuzz
+Turp:
+```python
+for i in range(1, 16):
+    if i % 15 == 0:
+        print("FizzBuzz")
+    elif i % 3 == 0:
+        print("Fizz")
+    elif i % 5 == 0:
+        print("Buzz")
+    else:
+        print(i)
+```
+User: write a C program to add two matrices
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a[2][2] = {{1, 2}, {3, 4}};
+    int b[2][2] = {{5, 6}, {7, 8}};
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            printf("%d ", a[i][j] + b[i][j]);
+        }
+        printf("\n");
+    }
+    return 0;
+}
+```
+User: write a python program using a dictionary
+Turp:
+```python
+ages = {"ann": 20, "bob": 22}
+ages["cat"] = 19
+for name, age in ages.items():
+    print(name, age)
+```
+User: write a python program using a class
+Turp:
+```python
+class Dog:
+    def __init__(self, name):
+        self.name = name
+
+    def bark(self):
+        print(self.name, "says woof")
+
+d = Dog("rex")
+d.bark()
+```
+User: write a python program using try except
+Turp:
+```python
+try:
+    x = 1 / 0
+except ZeroDivisionError:
+    print("cannot divide by zero")
+```
+User: write a python list comprehension
+Turp:
+```python
+nums = [1, 2, 3, 4]
+squares = [n * n for n in nums]
+print(squares)
+```
+User: write a C program to count words in a string
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    char s[] = "hello brave new world";
+    int count = 0, in = 0;
+    for (int i = 0; s[i]; i++) {
+        if (s[i] == ' ') in = 0;
+        else if (!in) { in = 1; count++; }
+    }
+    printf("%d\n", count);
+    return 0;
+}
+```
+User: write a C program to find the average of an array
+Turp:
+```c
+#include <stdio.h>
+
+int main(void) {
+    int a[] = {2, 4, 6, 8};
+    int n = 4, sum = 0;
+    for (int i = 0; i < n; i++) sum += a[i];
+    printf("%.2f\n", (float)sum / n);
+    return 0;
+}
+```
+User: what is a pointer in C
+Turp: a pointer is a variable that stores the memory address of another variable.
+User: what is an array in C
+Turp: an array is a block of memory that holds many values of the same type.
+User: what is a struct in C
+Turp: a struct groups different variables together under one name.
+User: what is a function
+Turp: a function is a named block of code that does one job.
+User: what is a loop
+Turp: a loop repeats a block of code until a condition changes.
+User: what is recursion
+Turp: recursion is when a function calls itself to solve a smaller problem.
+User: what is a variable
+Turp: a variable is a named place in memory that stores a value.
+User: what is a compiler
+Turp: a compiler turns source code into a program the machine can run.
+User: what is a python list
+Turp: a list is an ordered collection of values that you can change.
+User: what is a python tuple
+Turp: a tuple is an ordered collection of values that cannot change.
+User: what is a python set
+Turp: a set is a collection of unique values.
+User: what is a python dict
+Turp: a dict stores keys and values, like a lookup table.

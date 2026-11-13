@@ -34,7 +34,7 @@ jobs:
         run: |
           mkdir -p data
           if [ ! -f data/tinystories.txt ]; then
-            curl -sL --max-time 600 -o data/tinystories.txt \
+            curl -fsSL --max-time 600 -o data/tinystories.txt \
               https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories-valid.txt
           fi
           wc -c data/tinystories.txt
@@ -59,40 +59,86 @@ jobs:
             --model work/model \
             --steps 20000 --batch 8 --seq 128 --milestone 100000
 
-      - name: Convert to GGUF
+      # Save training progress FIRST. Conversion can fail without losing steps.
+      - name: Save checkpoint
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          if [ ! -f work/turp-ckpt.zip ]; then
+            echo "no checkpoint produced"
+            exit 0
+          fi
+          gh release view turp-v1 >/dev/null 2>&1 || gh release create turp-v1 \
+            --title "Turp (GGUF)" \
+            --notes "Turp is a GPT-2-architecture transformer trained from scratch on GitHub Actions CPU. The .gguf is produced by llama.cpp's own converter and runs in the browser through wllama."
+          gh release upload turp-v1 work/turp-ckpt.zip --clobber
+          git config user.name "turp-trainer"
+          git config user.email "turp-trainer@users.noreply.github.com"
+          git add status.json
+          if git diff --cached --quiet; then
+            echo "status unchanged"
+          else
+            git commit -m "train: $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: turp-checkpoint
+          path: work/turp-ckpt.zip
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Convert to GGUF
+        if: always()
+        run: |
+          if [ ! -f work/model/config.json ]; then
+            echo "no model to convert"
+            exit 0
+          fi
           git clone --depth 1 https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp
           python convert_gguf.py
           ls -la turp-v1.gguf
 
-      - name: Commit checkpoint
+      - name: Commit GGUF
+        if: always()
         run: |
+          if [ ! -f turp-v1.gguf ]; then
+            echo "no GGUF produced"
+            exit 0
+          fi
           git config user.name "turp-trainer"
           git config user.email "turp-trainer@users.noreply.github.com"
           git add turp-v1.gguf status.json
           if git diff --cached --quiet; then
-            echo "no checkpoint change"
+            echo "no model change"
           else
-            git commit -m "train: checkpoint $(date -u +%Y-%m-%dT%H:%MZ)"
+            git commit -m "model: GGUF checkpoint $(date -u +%Y-%m-%dT%H:%MZ)"
             git push
           fi
 
       - name: Publish release
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view turp-v1 >/dev/null 2>&1 || gh release create turp-v1 \
             --title "Turp (GGUF)" \
             --notes "Turp is a GPT-2-architecture transformer trained from scratch on GitHub Actions CPU. The .gguf is produced by llama.cpp's own converter and runs in the browser through wllama."
-          gh release upload turp-v1 turp-v1.gguf work/turp-ckpt.zip --clobber
+          if [ -f turp-v1.gguf ]; then
+            gh release upload turp-v1 turp-v1.gguf work/turp-ckpt.zip --clobber
+          fi
 
       - name: Milestone snapshot
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           STEPS=$(python -c "import json;print(json.load(open('status.json'))['steps'])" 2>/dev/null || echo 0)
           echo "steps=$STEPS"
-          if [ "$STEPS" -gt 0 ] && [ $((STEPS % 100000)) -eq 0 ]; then
+          if [ "$STEPS" -gt 0 ] && [ $((STEPS % 100000)) -eq 0 ] && [ -f turp-v1.gguf ]; then
             gh release view "turp-${STEPS}" >/dev/null 2>&1 || \
               gh release create "turp-${STEPS}" turp-v1.gguf \
                 --title "Turp — ${STEPS} steps" \

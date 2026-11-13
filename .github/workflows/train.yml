@@ -53,11 +53,29 @@ jobs:
           fi
 
       - name: Train
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          gh release view turp-v1 >/dev/null 2>&1 || gh release create turp-v1 \
+            --title "Turp (GGUF)" \
+            --notes "Turp is a GPT-2-architecture transformer trained from scratch on GitHub Actions CPU. The .gguf is produced by llama.cpp's own converter and runs in the browser through wllama."
+          (
+            while true; do
+              sleep 300
+              if [ -f work/turp-ckpt.zip ] && unzip -tq work/turp-ckpt.zip >/dev/null 2>&1; then
+                gh release upload turp-v1 work/turp-ckpt.zip --clobber >/dev/null 2>&1 \
+                  && echo "mid-run checkpoint uploaded $(date -u +%H:%M:%S)"
+              fi
+            done
+          ) &
+          UPLOADER=$!
           python train.py \
             --data data/tinystories.txt \
             --model work/model \
             --steps 100000 --batch 8 --seq 128 --milestone 100000
+          STATUS=$?
+          kill $UPLOADER 2>/dev/null || true
+          exit $STATUS
 
       # Save training progress FIRST. Conversion can fail without losing steps.
       - name: Save checkpoint

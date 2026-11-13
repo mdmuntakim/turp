@@ -141,7 +141,42 @@ def main():
     running = 0.0
     lo = 0
     hi = len(ids) - args.seq - 1
-    best = None
+    best = state.get("loss")
+    zip_path = Path(args.ckpt_zip)
+
+    def persist(current_steps, loss_value):
+        """Save model + status + zip atomically, so partial runs are never lost."""
+        model.save_pretrained(str(model_dir))
+        st = {
+            "steps": int(current_steps),
+            "loss": loss_value,
+            "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        state_path.write_text(json.dumps(st))
+        try:
+            cfg = json.loads((model_dir / "config.json").read_text())
+            status = {
+                "steps": st["steps"],
+                "milestone": args.milestone,
+                "loss": st["loss"],
+                "updated": st["updated"],
+                "params": int(sum(p.numel() for p in model.parameters())),
+                "vocab": cfg["vocab_size"],
+                "context": cfg["n_positions"],
+                "arch": "gpt2",
+            }
+            Path(args.status).write_text(json.dumps(status, indent=1))
+        except Exception as exc:  # status is cosmetic; checkpoint must still save
+            log(f"status write failed: {exc}")
+        zip_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_base = zip_path.parent / "ckpt-partial"
+        tmp_zip = tmp_base.with_suffix(".zip")
+        if tmp_zip.exists():
+            tmp_zip.unlink()
+        shutil.make_archive(str(tmp_base), "zip", root_dir=str(model_dir))
+        os.replace(tmp_zip, zip_path)
+        log(f"checkpoint saved at {st['steps']} steps ({zip_path.stat().st_size / 1024 / 1024:.1f} MB)")
+        return st
 
     for step in range(1, steps_to_run + 1):
         starts = np.random.randint(lo, hi, size=args.batch)
@@ -160,11 +195,13 @@ def main():
             secs = time.time() - t0
             log(f"step {step}/{steps_to_run} loss {avg:.3f} {secs / step * 1000:.0f} ms/step")
             best = avg
+        if step % 10000 == 0 and step != steps_to_run:
+            persist(steps_done + step, best)
 
     steps_done += steps_to_run
     state = {
         "steps": steps_done,
-        "loss": best if best is not None else state.get("loss"),
+        "loss": best,
         "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
@@ -181,30 +218,8 @@ def main():
         )
     log("\n--- sample ---\n" + tok.decode(gen[0].tolist()) + "\n--------------")
 
-    model.save_pretrained(str(model_dir))
-    state_path.write_text(json.dumps(state))
-
-    params = int(sum(p.numel() for p in model.parameters()))
-    cfg = json.loads((model_dir / "config.json").read_text())
-    status = {
-        "steps": steps_done,
-        "milestone": args.milestone,
-        "loss": state["loss"],
-        "updated": state["updated"],
-        "params": params,
-        "vocab": cfg["vocab_size"],
-        "context": cfg["n_positions"],
-        "arch": "gpt2",
-    }
-    Path(args.status).write_text(json.dumps(status, indent=1))
-
-    zip_path = Path(args.ckpt_zip)
-    zip_path.parent.mkdir(parents=True, exist_ok=True)
-    if zip_path.exists():
-        zip_path.unlink()
-    shutil.make_archive(str(zip_path.with_suffix("")), "zip", root_dir=str(model_dir))
-    log(f"wrote {zip_path} ({zip_path.stat().st_size / 1024 / 1024:.1f} MB)")
-    log(f"status: {json.dumps(status)}")
+    state = persist(steps_done, best)
+    log(f"status: {json.dumps(state)}")
 
 
 if __name__ == "__main__":

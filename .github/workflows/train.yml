@@ -58,7 +58,7 @@ jobs:
         run: |
           gh release view turp-v1 >/dev/null 2>&1 || gh release create turp-v1 \
             --title "Turp (GGUF)" \
-            --notes "Turp is a GPT-2-architecture transformer trained from scratch on GitHub Actions CPU. The .gguf is produced by llama.cpp's own converter and runs in the browser through wllama."
+            --notes "Turp is a GPT-2-architecture transformer trained from scratch on GitHub Actions CPU. The .gguf is produced by llama.cpp's own converter and runs in the browser with a JavaScript GGUF engine."
           (
             while true; do
               sleep 300
@@ -89,7 +89,7 @@ jobs:
           fi
           gh release view turp-v1 >/dev/null 2>&1 || gh release create turp-v1 \
             --title "Turp (GGUF)" \
-            --notes "Turp is a GPT-2-architecture transformer trained from scratch on GitHub Actions CPU. The .gguf is produced by llama.cpp's own converter and runs in the browser through wllama."
+            --notes "Turp is a GPT-2-architecture transformer trained from scratch on GitHub Actions CPU. The .gguf is produced by llama.cpp's own converter and runs in the browser with a JavaScript GGUF engine."
           gh release upload turp-v1 work/turp-ckpt.zip --clobber
           git config user.name "turp-trainer"
           git config user.email "turp-trainer@users.noreply.github.com"
@@ -144,7 +144,7 @@ jobs:
         run: |
           gh release view turp-v1 >/dev/null 2>&1 || gh release create turp-v1 \
             --title "Turp (GGUF)" \
-            --notes "Turp is a GPT-2-architecture transformer trained from scratch on GitHub Actions CPU. The .gguf is produced by llama.cpp's own converter and runs in the browser through wllama."
+            --notes "Turp is a GPT-2-architecture transformer trained from scratch on GitHub Actions CPU. The .gguf is produced by llama.cpp's own converter and runs in the browser with a JavaScript GGUF engine."
           if [ -f turp-v1.gguf ]; then
             gh release upload turp-v1 turp-v1.gguf work/turp-ckpt.zip --clobber
           fi

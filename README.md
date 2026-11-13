@@ -2,7 +2,7 @@
 
 Turp is a **GPT-2-architecture transformer** trained from scratch on a GitHub Actions CPU.
 Its weights are exported to **`turp-v1.gguf`** by **llama.cpp's own converter**, and the page
-runs that GGUF **in your browser through wllama** (llama.cpp compiled to WebAssembly).
+runs that GGUF **directly in your browser** with a small JavaScript inference engine (`gguf.js` + `gpt2.js`).
 
 There is no retrieval layer, no rule table, and no existing model — every token is generated
 by the transformer.
@@ -25,7 +25,7 @@ by the transformer.
 | Training data | TinyStories (public-domain-style synthetic stories) + chat patterns |
 | Optimizer | AdamW, 100,000 steps per run |
 | Export | f16 GGUF via `llama.cpp/convert_hf_to_gguf.py` |
-| Browser runtime | wllama (llama.cpp WASM), vendored in `wllama/` |
+| Browser runtime | JavaScript GGUF engine (`gguf.js`, `tokenizer.js`, `gpt2.js`) |
 
 ## How it works
 
@@ -33,7 +33,7 @@ by the transformer.
 2. `train.py` loads the previous Hugging Face checkpoint from the `turp-v1` release, trains 100,000 steps, saves a new checkpoint.
 3. llama.cpp converts the checkpoint to `turp-v1.gguf` (f16).
 4. The GGUF and checkpoint are uploaded to the release; the GGUF is committed to `main`.
-5. Pages deploys, and `index.html` loads the GGUF with wllama and generates locally.
+5. Pages deploys, and `index.html` loads the GGUF and generates locally with the JS engine.
 
 Training stops exactly on each **100,000-step** milestone, uploads a snapshot, and the next
 run continues from that checkpoint — not from scratch.
@@ -44,9 +44,21 @@ run continues from that checkpoint — not from scratch.
 |---|---|
 | `train.py` | Tokenizer, GPT-2 training, checkpoint + status |
 | `qa.txt` | Small chat-format corpus mixed into training |
-| `index.html` | Monochrome UI, progress/ETA, wllama generation |
-| `wllama/` | Vendored llama.cpp WASM runtime |
+| `index.html` | Monochrome UI, progress/ETA, generation |
+| `gguf.js` / `tokenizer.js` / `gpt2.js` | GGUF reader, byte-level BPE, transformer inference |
 | `.github/workflows/train.yml` | Scheduled training + GGUF conversion |
+
+## Generative, not rule-based
+
+There is no lookup table and no `if input == ...` anywhere in the runtime. The GGUF
+file stores only learned weights. For every reply, the transformer reads the prompt,
+computes a probability for each possible next token, samples one, appends it, and
+repeats. `chat.txt`, `code.txt` and `qa.txt` are **training material** (like any LLM's
+instruction data) — they shape the weights, they are not consulted at answer time.
+
+A tiny model can overfit and repeat training lines; that is memorization, not a rule
+engine, and it is why the corpora are mixed at moderate weight instead of repeated
+thousands of times.
 
 ## Honest limits
 

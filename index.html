@@ -131,15 +131,16 @@
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
     </button>
   </div>
-  <div class="note"><span id="noteModel">GPT-2 · GGUF ·</span> generated locally in your browser with wllama (<a href="https://github.com/ngxson/wllama">llama.cpp WASM</a>) · trained on GitHub Actions CPU</div>
+  <div class="note"><span id="noteModel">GPT-2 · GGUF ·</span> generated locally in your browser by a JavaScript GGUF engine · trained on GitHub Actions CPU</div>
 </div>
 
 <script type="module">
-import { Wllama } from "./wllama/esm/index.js";
+import { parseGGUF } from "./gguf.js";
+import { loadModel } from "./gpt2.js";
 
 const $ = (id) => document.getElementById(id);
 const REPO = "mdmuntakim/turp";
-const state = { wllama: null, status: null, busy: false, history: [] };
+const state = { model: null, status: null, busy: false, history: [] };
 
 function fmt(n) { return Number(n).toLocaleString("en-US"); }
 function duration(ms) {
@@ -243,13 +244,26 @@ async function init() {
   setInterval(checkTraining, 60000);
   setStatus("downloading GGUF…");
   try {
-    state.wllama = new Wllama({ default: "./wllama/esm/wasm/wllama.wasm" });
-    await state.wllama.loadModelFromUrl("turp-v1.gguf", {
-      n_ctx: 256,
-      progressCallback: ({ loaded, total }) => {
-        if (total) setStatus("downloading GGUF… " + Math.round(loaded / total * 100) + "%");
-      }
-    });
+    const res = await fetch("turp-v1.gguf?t=" + Date.now());
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const total = Number(res.headers.get("content-length")) || 0;
+    const reader = res.body.getReader();
+    const chunks = [];
+    let loaded = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.length;
+      if (total) setStatus("downloading GGUF… " + Math.round(loaded / total * 100) + "%");
+    }
+    const bytes = new Uint8Array(loaded);
+    let off = 0;
+    for (const c of chunks) { bytes.set(c, off); off += c.length; }
+    setStatus("loading weights…");
+    await new Promise((r) => setTimeout(r, 30));
+    const gguf = parseGGUF(bytes.buffer);
+    state.model = loadModel(gguf);
     setStatus("model ready");
     $("input").disabled = false;
     $("send").disabled = false;
@@ -265,7 +279,7 @@ function setStatus(t) { $("status").textContent = t; }
 async function send() {
   const input = $("input");
   const text = input.value.trim();
-  if (!text || state.busy || !state.wllama) return;
+  if (!text || state.busy || !state.model) return;
   input.value = "";
   input.style.height = "auto";
   addMessage("user", text);
@@ -276,18 +290,17 @@ async function send() {
   $("send").disabled = true;
   setStatus("generating…");
   try {
-    const res = await state.wllama.createCompletion({
-      prompt: promptFor(text),
-      max_tokens: 64,
-      temperature: 0.75,
-      top_k: 40,
-      top_p: 0.9,
-      stop: ["\nUser:", "User:"]
-    });
-    let out = (res.choices && res.choices[0] && res.choices[0].text || "").trim();
-    out = out.replace(/^Turp:\s*/i, "").trim();
-    if (!out) out = "…";
     const t = el.querySelector(".text");
+    let out = await state.model.generate(promptFor(text), {
+      maxTokens: 64,
+      temperature: 0.75,
+      topK: 40,
+      topP: 0.9,
+      stop: ["\nUser:", "User:"],
+      onToken: (partial) => { t.textContent = partial; }
+    });
+    out = out.trim();
+    if (!out) out = "…";
     t.textContent = out;
     state.history.push({ role: "assistant", content: out });
     if (state.history.length > 6) state.history = state.history.slice(-6);

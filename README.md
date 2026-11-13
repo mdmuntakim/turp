@@ -1,36 +1,38 @@
-# Turp — a real AI assistant that runs in your browser
+# Turp — a small AI trained from scratch on GitHub Actions
 
-Turp is a ChatGPT-style chat UI powered by a **real small language model** running
-100% locally in the browser via **WebGPU** ([WebLLM](https://github.com/mlc-ai/web-llm)).
+Turp is a tiny language model with **its own weights, its own trainer, and its own UI**.
+Nothing is borrowed from existing models: every parameter is learned on a **GitHub Actions CPU**
+from `corpus.txt`, checkpoint after checkpoint.
 
-- No server, no API key, no rule-based responses — actual transformer inference.
-- First load downloads the model once (cached afterwards).
-- Works on desktop Chrome/Edge 113+ and WebGPU-enabled Chrome on Android.
+## How it works
 
-## Models
-
-| Model | Params | Footprint |
+| Part | File | Role |
 |---|---|---|
-| SmolLM2 360M | 360M | ~580 MB VRAM |
-| Qwen2.5 0.5B | 0.5B | ~945 MB VRAM |
-| Qwen3 0.6B | 0.6B | ~1.9 GB VRAM |
-| Llama 3.2 1B | 1.2B | ~1.1 GB VRAM |
+| Model | `model.js` | Char-level neural net (context → embeddings → ReLU → softmax) shared by Node + browser |
+| Trainer | `train.js` | Loads the last checkpoint, trains N steps, saves `model.json` |
+| Corpus | `corpus.txt` | The only text Turp learns from |
+| Training | `.github/workflows/train.yml` | Runs **every 3 hours** on GitHub Actions CPU and commits the new checkpoint |
+| Deployment | `.github/workflows/deploy.yml` | Publishes the site to GitHub Pages on every push |
+| UI | `index.html` | Loads `model.json` from the repo and chats with it in the browser |
 
-## Why not 100,000 parameters?
+## Live
 
-A 100K-parameter model cannot behave like ChatGPT. Real assistants need hundreds of
-millions to hundreds of billions of parameters — this is arithmetic, not a trick.
-A tiny 0.5B model is already ~5,000× bigger than "1 lakh", and it still only
-approximates ChatGPT-level fluency.
+**https://mdmuntakim.github.io/turp/**
 
-## Hosting
+## Reality check
 
-The GitHub Action deploys the static site to GitHub Pages on every push to `main`.
+Turp is ~93,000 parameters (under the 1-lakh cap by construction). That is a real neural
+network, but it is a *small* one: it completes text and answers simple learned patterns, it
+does not reason like ChatGPT. Making it bigger does not fit in a 100 MB file — file size ≈
+parameters × bytes-per-parameter. At 4-bit, 100 MB ≈ 200M params max.
 
-**Live:** https://mdmuntakim.github.io/turp/
+Everything runs on GitHub — training in Actions, inference in the visitor's browser. No phone,
+no local server, no API key.
 
-## Note on the "action reset trick"
+## Manual training run
 
-Public repositories get free standard GitHub Actions minutes — no reset trick is
-needed or possible. Standard runners are CPU-only, which is why model inference
-happens in the visitor's browser (WebGPU), not in Actions.
+```sh
+node train.js --steps 1200 --batch 32 --lr 0.08
+```
+
+Or trigger **Actions → Train Turp → Run workflow**.

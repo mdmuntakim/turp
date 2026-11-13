@@ -1,0 +1,38 @@
+name: Train Turp
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: train
+  cancel-in-progress: false
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Train checkpoint
+        run: node train.js --steps 1200 --batch 32 --lr 0.08
+
+      - name: Commit checkpoint
+        run: |
+          git config user.name "turp-trainer"
+          git config user.email "turp-trainer@users.noreply.github.com"
+          git add model.json
+          if git diff --cached --quiet; then
+            echo "no checkpoint change"
+          else
+            git commit -m "train: checkpoint $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi

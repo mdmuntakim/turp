@@ -23,14 +23,14 @@ by the transformer.
 | Vocabulary | 4,096 BPE tokens (byte-level) |
 | Parameters | ~2.03 million |
 | Training data | TinyStories (public-domain-style synthetic stories) + chat patterns |
-| Optimizer | AdamW, 1,200 steps per run |
+| Optimizer | AdamW, 100,000 steps per run |
 | Export | f16 GGUF via `llama.cpp/convert_hf_to_gguf.py` |
 | Browser runtime | wllama (llama.cpp WASM), vendored in `wllama/` |
 
 ## How it works
 
 1. `.github/workflows/train.yml` runs every 3 hours.
-2. `train.py` loads the previous Hugging Face checkpoint from the `turp-v1` release, trains 1,200 steps, saves a new checkpoint.
+2. `train.py` loads the previous Hugging Face checkpoint from the `turp-v1` release, trains 100,000 steps, saves a new checkpoint.
 3. llama.cpp converts the checkpoint to `turp-v1.gguf` (f16).
 4. The GGUF and checkpoint are uploaded to the release; the GGUF is committed to `main`.
 5. Pages deploys, and `index.html` loads the GGUF with wllama and generates locally.
@@ -51,5 +51,5 @@ run continues from that checkpoint — not from scratch.
 ## Honest limits
 
 This is a genuine generative transformer, but a tiny one trained for a short time. Early
-checkpoints produce simple, imperfect English. Quality improves with every 1,200-step run.
+checkpoints produce simple, imperfect English. Quality improves with every 100,000-step run.
 It is not ChatGPT-level and will not reliably answer arbitrary questions.

@@ -15,7 +15,7 @@ concurrency:
 jobs:
   train:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +57,7 @@ jobs:
           python train.py \
             --data data/tinystories.txt \
             --model work/model \
-            --steps 20000 --batch 8 --seq 128 --milestone 100000
+            --steps 100000 --batch 8 --seq 128 --milestone 100000
 
       # Save training progress FIRST. Conversion can fail without losing steps.
       - name: Save checkpoint

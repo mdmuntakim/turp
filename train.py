@@ -45,28 +45,48 @@ def load_tokenizer(model_dir):
     )
 
 
+def encode_blocks(tok, text, eos_id):
+    """Split a dialogue/code file into User: blocks and append EOS after each."""
+    blocks = []
+    cur = []
+    for line in text.splitlines():
+        if line.startswith("User:") and cur:
+            blocks.append("\n".join(cur).strip())
+            cur = [line]
+        else:
+            cur.append(line)
+    if cur:
+        blocks.append("\n".join(cur).strip())
+    parts = []
+    for b in blocks:
+        if not b:
+            continue
+        parts.append(np.array(tok.encode(b).ids + [eos_id], dtype=np.int32))
+    return parts
+
+
 def make_ids(tok, data_path, project_dir, repeat_qa=30, repeat_chat=500, repeat_code=300, story_chars=0):
     story_text = Path(data_path).read_text(encoding="utf-8", errors="ignore")
     if story_chars > 0:
         story_text = story_text[:story_chars]
     chunks = [c.strip() for c in story_text.split(EOS) if c.strip()]
-    ids = []
     eos_id = tok.token_to_id(EOS)
+    arrays = []
     for i, chunk in enumerate(chunks):
-        ids.extend(tok.encode(chunk).ids)
-        ids.append(eos_id)
+        arrays.append(np.array(tok.encode(chunk).ids + [eos_id], dtype=np.int32))
         if i % 20000 == 0:
             log(f"  tokenized {i}/{len(chunks)} stories")
     for name, times in (("qa.txt", repeat_qa), ("chat.txt", repeat_chat), ("code.txt", repeat_code)):
         p = Path(project_dir) / name
         if not p.exists():
             continue
-        block = p.read_text(encoding="utf-8", errors="ignore").strip() + "\n\n"
-        for _ in range(times):
-            ids.extend(tok.encode(block).ids)
-        ids.append(eos_id)
-        log(f"  mixed {name} x{times}")
-    return np.array(ids, dtype=np.int32)
+        parts = encode_blocks(tok, p.read_text(encoding="utf-8", errors="ignore"), eos_id)
+        if not parts:
+            continue
+        base = np.concatenate(parts)
+        arrays.append(np.tile(base, times))
+        log(f"  mixed {name} x{times} ({len(base):,} ids per copy)")
+    return np.concatenate(arrays)
 
 
 def main():

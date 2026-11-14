@@ -17,6 +17,9 @@ on:
       story_chars:
         description: "Limit story corpus size (0 = full)"
         default: "0"
+      lr:
+        description: "Learning rate"
+        default: "0.0003"
 
 permissions:
   contents: write
@@ -72,6 +75,7 @@ jobs:
           REPEAT_CHAT: ${{ inputs.repeat_chat || '500' }}
           REPEAT_CODE: ${{ inputs.repeat_code || '300' }}
           STORY_CHARS: ${{ inputs.story_chars || '0' }}
+          LR: ${{ inputs.lr || '0.0003' }}
         run: |
           gh release view turp-v1 >/dev/null 2>&1 || gh release create turp-v1 \
             --title "Turp (GGUF)" \
@@ -91,7 +95,7 @@ jobs:
             --model work/model \
             --steps "$STEPS" --batch 8 --seq 128 --milestone 100000 \
             --repeat-chat "$REPEAT_CHAT" --repeat-code "$REPEAT_CODE" \
-            --story-chars "$STORY_CHARS"
+            --story-chars "$STORY_CHARS" --lr "$LR"
           STATUS=$?
           kill $UPLOADER 2>/dev/null || true
           exit $STATUS

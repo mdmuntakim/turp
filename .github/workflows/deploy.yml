@@ -1,8 +1,10 @@
 name: Deploy Turp
 
+# The GitHub Pages site (mdmuntakim.github.io/turp) is disabled on purpose.
+# Deploys no longer run on every push to main; this workflow can only be
+# started by hand after Pages has been re-enabled in repository settings
+# (Settings -> Pages -> Source: GitHub Actions).
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

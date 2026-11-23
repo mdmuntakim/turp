@@ -7,7 +7,8 @@ runs that GGUF **directly in your browser** with a small JavaScript inference en
 There is no retrieval layer, no rule table, and no existing model — every token is generated
 by the transformer.
 
-**Live: https://mdmuntakim.github.io/turp/**
+**Live site: disabled.** GitHub Pages is turned off for this repository on purpose,
+so `https://mdmuntakim.github.io/turp/` is no longer served.
 **Model: https://github.com/mdmuntakim/turp/releases/tag/turp-v1**
 
 ## Architecture
@@ -29,11 +30,13 @@ by the transformer.
 
 ## How it works
 
-1. `.github/workflows/train.yml` runs every 3 hours.
+1. Training is manual: start **Actions → Train Turp → Run workflow** when a new
+   checkpoint is wanted. There is no schedule.
 2. `train.py` loads the previous Hugging Face checkpoint from the `turp-v1` release, trains 100,000 steps, saves a new checkpoint.
 3. llama.cpp converts the checkpoint to `turp-v1.gguf` (f16).
 4. The GGUF and checkpoint are uploaded to the release; the GGUF is committed to `main`.
-5. Pages deploys, and `index.html` loads the GGUF and generates locally with the JS engine.
+5. Pages is disabled and no longer deploys on push; `index.html` can still be
+   served locally and loads the GGUF for generation with the JS engine.
 
 Training stops exactly on each **100,000-step** milestone, uploads a snapshot, and the next
 run continues from that checkpoint — not from scratch.

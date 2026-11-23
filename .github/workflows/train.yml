@@ -1,8 +1,10 @@
 name: Train Turp
 
+# Training is manual only. It used to run on a 3-hour schedule, which kept a
+# multi-hour CPU job running permanently and committed a new GGUF checkpoint on
+# every run. Start a run from the Actions tab ("Train Turp" -> Run workflow)
+# when a new checkpoint is actually wanted.
 on:
-  schedule:
-    - cron: "0 */3 * * *"
   workflow_dispatch:
     inputs:
       steps:
